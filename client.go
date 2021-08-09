@@ -11,8 +11,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
-
 
 const (
 	epPing                = "/api/"
@@ -27,6 +27,10 @@ const (
 	epPlainErrorLog       = "/api/error_log"
 	epCameraProxy         = "/api/camera_proxy/%s"
 	epCallService         = "/api/services/%s/%s"
+	epFireEvent           = "/api/events/%s"
+	epTemplate            = "/api/template"
+	epConfigurationCheck  = "/api/config/core/check_config"
+	epCreateState         = "/api/states/%s"
 )
 
 var NotFoundError = errors.New("not found")
@@ -121,6 +125,15 @@ func (c *Client) GetCameraJpeg(ctx context.Context, cameraEntityId string) (imag
 	})
 }
 
+func (c *Client) CreateState(ctx context.Context, entityId string, newState State) (StateResponse, error) {
+	response := StateResponse{}
+	b, err := json.Marshal(newState)
+	if err != nil {
+		return response, fmt.Errorf("error creating state request body: %w", err)
+	}
+	return response, c.doPostRequestJson(ctx, fmt.Sprintf(epStateEntity, entityId), bytes.NewBuffer(b), &response)
+}
+
 func (c *Client) CallService(ctx context.Context, cmd DefaultServiceCmd) (StateEntities, error) {
 	states := StateEntities{}
 
@@ -133,6 +146,47 @@ func (c *Client) CallService(ctx context.Context, cmd DefaultServiceCmd) (StateE
 	}
 
 	return states, c.doPostRequestJson(ctx, fmt.Sprintf(epCallService, cmd.Domain, cmd.Service), cmd.Reader(), &states)
+}
+
+func (c *Client) FireEvent(ctx context.Context, eventType string, atTime *time.Time) (bool, error) {
+	reader := &bytes.Buffer{}
+	if atTime != nil {
+		if b, err := json.Marshal(newEventRising{NextRising: atTime}); err != nil {
+			reader = bytes.NewBuffer(b)
+		}
+	}
+	if err := c.doPostRequestJson(ctx, fmt.Sprintf(epFireEvent, eventType), reader, nil); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (c *Client) RenderTemplate(ctx context.Context, template string) (string, error) {
+	if template == "" {
+		return "", errors.New("empty template")
+	}
+
+	b, err := json.Marshal(templateRequest{
+		Template: template,
+	})
+	if err != nil {
+		return "", fmt.Errorf("error creating template request: %w", err)
+	}
+
+	rendered := ""
+	return rendered, c.doRequest(ctx, http.MethodPost, epTemplate, bytes.NewBuffer(b), func(reader io.Reader) error {
+		tmp, err := io.ReadAll(reader)
+		if err != nil {
+			return err
+		}
+		rendered = string(tmp)
+		return nil
+	})
+}
+
+func (c *Client) TriggerConfigCheck(ctx context.Context) (ConfigurationCheckResult, error) {
+	result := ConfigurationCheckResult{}
+	return result, c.doPostRequestJson(ctx, epConfigurationCheck, nil, &result)
 }
 
 func (c *Client) doGetRequestJson(ctx context.Context, endpoint string, responseEntity interface{}) error {

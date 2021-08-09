@@ -172,6 +172,31 @@ type DefaultServiceCmd struct {
 	EntityId string `json:"entity_id"`
 }
 
+type newEventRising struct {
+	NextRising *time.Time `json:"next_rising,omitempty"`
+}
+
+type templateRequest struct {
+	Template string `json:"template"`
+}
+
+type ConfigurationCheckResult struct {
+	Errors *string `json:"errors"`
+	Result string  `json:"result"`
+}
+
+type StateResponse struct {
+	State
+	EntityId    string    `json:"entity_id"`
+	LastChanged time.Time `json:"last_changed"`
+	LastUpdated time.Time `json:"last_updated"`
+}
+
+type State struct {
+	State      string                 `json:"state"`
+	Attributes map[string]interface{} `json:"attributes"`
+}
+
 func (c DefaultServiceCmd) Reader() io.Reader {
 	b, _ := json.Marshal(c)
 	return bytes.NewBuffer(b)
