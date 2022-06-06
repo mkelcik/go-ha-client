@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"reflect"
 	"strings"
@@ -166,6 +167,15 @@ func NewTurnLightOffCmd(entityId string) DefaultServiceCmd {
 	}
 }
 
+// NewToggleLightTCmd is helper for turning light off
+func NewToggleLightTCmd(entityId string) DefaultServiceCmd {
+	return DefaultServiceCmd{
+		Service:  "toggle",
+		Domain:   "light",
+		EntityId: entityId,
+	}
+}
+
 type DefaultServiceCmd struct {
 	Service  string `json:"-"`
 	Domain   string `json:"-"`
@@ -187,9 +197,18 @@ type ConfigurationCheckResult struct {
 
 type StateResponse struct {
 	State
+	CreateCode  int       `json:"-"`
 	EntityId    string    `json:"entity_id"`
 	LastChanged time.Time `json:"last_changed"`
 	LastUpdated time.Time `json:"last_updated"`
+}
+
+func (s StateResponse) Created() bool {
+	return s.CreateCode == http.StatusCreated
+}
+
+func (s StateResponse) Updated() bool {
+	return s.CreateCode == http.StatusOK
 }
 
 type State struct {

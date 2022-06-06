@@ -30,7 +30,6 @@ const (
 	epFireEvent           = "/api/events/%s"
 	epTemplate            = "/api/template"
 	epConfigurationCheck  = "/api/config/core/check_config"
-	epCreateState         = "/api/states/%s"
 )
 
 var NotFoundError = errors.New("not found")
@@ -131,7 +130,15 @@ func (c *Client) CreateState(ctx context.Context, entityId string, newState Stat
 	if err != nil {
 		return response, fmt.Errorf("error creating state request body: %w", err)
 	}
-	return response, c.doPostRequestJson(ctx, fmt.Sprintf(epStateEntity, entityId), bytes.NewBuffer(b), &response)
+
+	respCode, err := c.do(ctx, http.MethodPost, fmt.Sprintf(epStateEntity, entityId), bytes.NewBuffer(b), func(reader io.Reader) error {
+		return json.NewDecoder(reader).Decode(&response)
+	})
+
+	if respCode != nil {
+		response.CreateCode = *respCode
+	}
+	return response, nil
 }
 
 func (c *Client) CallService(ctx context.Context, cmd DefaultServiceCmd) (StateEntities, error) {
@@ -229,10 +236,10 @@ func (c *Client) doGetRequestPlain(ctx context.Context, endpoint string, plainTe
 	})
 }
 
-func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io.Reader, bodyDecoder func(reader io.Reader) error) error {
+func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader, bodyDecoder func(reader io.Reader) error) (*int, error) {
 	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("%s%s", c.config.Host, endpoint), body)
 	if err != nil {
-		return fmt.Errorf("error creating request `[%s] %s : %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
+		return nil, fmt.Errorf("error creating request `[%s] %s : %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.config.Token))
 
@@ -242,26 +249,26 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("error in request `[%s] %s`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint))
+		return nil, fmt.Errorf("error in request `[%s] %s`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint))
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return NotFoundError
+		return nil, NotFoundError
 	}
 
 	if resp.StatusCode == http.StatusBadRequest {
 		br := badRequestResponse{}
 		_ = json.NewDecoder(resp.Body).Decode(&br)
-		return errors.New(br.Message)
+		return nil, errors.New(br.Message)
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return UnAuthorizedError
+		return nil, UnAuthorizedError
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("wrong response code `%d`", resp.StatusCode)
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("wrong response code `%d`", resp.StatusCode)
 	}
 
 	var reader io.Reader
@@ -274,7 +281,12 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io
 		fmt.Printf("[HA Client] [%s] `%s` response: %s \n", req.Method, req.URL.String(), string(body))
 	}
 	if err := bodyDecoder(reader); err != nil {
-		return fmt.Errorf("error decoding request body `[%s] %s: %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
+		return nil, fmt.Errorf("error decoding request body `[%s] %s: %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
 	}
-	return nil
+	return &resp.StatusCode, nil
+}
+
+func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io.Reader, bodyDecoder func(reader io.Reader) error) error {
+	_, err := c.do(ctx, method, endpoint, body, bodyDecoder)
+	return err
 }
