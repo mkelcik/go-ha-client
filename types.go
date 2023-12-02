@@ -60,9 +60,7 @@ type Service struct {
 	Description string                  `json:"description"`
 	Fields      map[string]ServiceField `json:"fields"`
 	Target      struct {
-		Entity struct {
-			Domain string `json:"domain"`
-		} `json:"entity"`
+		Entity []map[string]interface{} `json:"entity"`
 	} `json:"target"`
 }
 
