@@ -66,9 +66,9 @@ vuln:
 	fi
 
 tools:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	go install honnef.co/go/tools/cmd/staticcheck@latest
-	go install github.com/securego/gosec/v2/cmd/gosec@latest
-	go install golang.org/x/vuln/cmd/govulncheck@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+	go install honnef.co/go/tools/cmd/staticcheck@v0.6.1
+	go install github.com/securego/gosec/v2/cmd/gosec@v2.22.11
+	go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
 ci: fmt-check vet test lint staticcheck gosec vuln
