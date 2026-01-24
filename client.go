@@ -9,7 +9,6 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
@@ -37,8 +36,8 @@ const (
 	epConfigurationCheck  = "/api/config/core/check_config"
 )
 
-var NotFoundError = errors.New("not found")
-var UnAuthorizedError = errors.New("unauthorized")
+var ErrNotFound = errors.New("not found")
+var ErrUnauthorized = errors.New("unauthorized")
 
 type badRequestResponse struct {
 	Message string `json:"message"`
@@ -355,7 +354,7 @@ func (c *Client) doGetRequestPlain(ctx context.Context, endpoint string, plainTe
 		if plainText == nil {
 			return nil
 		}
-		b, err := ioutil.ReadAll(reader)
+		b, err := io.ReadAll(reader)
 		if err != nil {
 			return err
 		}
@@ -382,7 +381,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, NotFoundError
+		return nil, ErrNotFound
 	}
 
 	if resp.StatusCode == http.StatusBadRequest {
@@ -392,7 +391,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, UnAuthorizedError
+		return nil, ErrUnauthorized
 	}
 
 	if resp.StatusCode >= 300 {
@@ -404,7 +403,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 
 	// for debug purpose
 	if c.config.Debug {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		reader = bytes.NewBuffer(body)
 		fmt.Printf("[HA Client] [%s] `%s` response: %s \n", req.Method, req.URL.String(), string(body))
 	}
