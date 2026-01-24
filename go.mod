@@ -1,4 +1,4 @@
-module github.com/mkelcik/go-ha-client
+module github.com/mkelcik/go-ha-client/v2
 
 go 1.24
 

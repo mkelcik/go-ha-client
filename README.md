@@ -12,7 +12,7 @@ package main
 import (
 	"context"
 	"fmt"
-	ha "github.com/mkelcik/go-ha-client"
+	ha "github.com/mkelcik/go-ha-client/v2"
 	"net/http"
 	"time"
 )
