@@ -39,6 +39,7 @@ const (
 var ErrNotFound = errors.New("not found")
 var ErrUnauthorized = errors.New("unauthorized")
 var ErrEmptyEntityID = errors.New("entityId must not be empty")
+var ErrEmptyCalendarID = errors.New("calendarId must not be empty")
 
 type badRequestResponse struct {
 	Message string `json:"message"`
@@ -139,7 +140,7 @@ func (c *Client) GetCalendars(ctx context.Context) (Calendars, error) {
 func (c *Client) GetCalendarEvents(ctx context.Context, calendarId string, start, end time.Time) (CalendarEvents, error) {
 	events := CalendarEvents{}
 	if calendarId == "" {
-		return events, errors.New("wrong calendarId")
+		return events, ErrEmptyCalendarID
 	}
 
 	query := url.Values{}
