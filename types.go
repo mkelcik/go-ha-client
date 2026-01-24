@@ -79,6 +79,7 @@ type StateChangesFilter struct {
 	EndTime                time.Time `json:"end_time"`
 	FilterEntityId         string    `json:"filter_entity_id"`
 	MinimalResponse        bool      `json:"minimal_response"`
+	NoAttributes           bool      `json:"no_attributes"`
 	SignificantChangesOnly bool      `json:"significant_changes_only"`
 }
 
@@ -131,6 +132,30 @@ func (f *LogbookFilter) String() string {
 }
 
 type StateEntities []StateEntity
+
+type Calendars []Calendar
+
+type Calendar struct {
+	Name     string `json:"name"`
+	EntityId string `json:"entity_id"`
+}
+
+type CalendarEvents []CalendarEvent
+
+type CalendarEvent struct {
+	Summary     string            `json:"summary"`
+	Description string            `json:"description,omitempty"`
+	Location    string            `json:"location,omitempty"`
+	UID         string            `json:"uid,omitempty"`
+	Start       CalendarEventTime `json:"start"`
+	End         CalendarEventTime `json:"end"`
+}
+
+type CalendarEventTime struct {
+	Date     string `json:"date,omitempty"`
+	DateTime string `json:"dateTime,omitempty"`
+	TimeZone string `json:"timeZone,omitempty"`
+}
 
 type StateEntity struct {
 	EntityId    string                 `json:"entity_id"`
@@ -193,6 +218,52 @@ type ConfigurationCheckResult struct {
 	Result string  `json:"result"`
 }
 
+type IntentRequest struct {
+	Name string                 `json:"name"`
+	Data map[string]interface{} `json:"data,omitempty"`
+}
+
+type IntentResponse struct {
+	Response map[string]interface{} `json:"response"`
+}
+
+type ConversationProcessRequest struct {
+	Text           string `json:"text"`
+	Language       string `json:"language,omitempty"`
+	AgentId        string `json:"agent_id,omitempty"`
+	ConversationId string `json:"conversation_id,omitempty"`
+}
+
+type ConversationProcessResponse struct {
+	ContinueConversation bool                 `json:"continue_conversation,omitempty"`
+	ConversationId       string               `json:"conversation_id,omitempty"`
+	Response             ConversationResponse `json:"response"`
+}
+
+type ConversationResponse struct {
+	ResponseType string                 `json:"response_type,omitempty"`
+	Language     string                 `json:"language,omitempty"`
+	Data         map[string]interface{} `json:"data,omitempty"`
+	Speech       map[string]interface{} `json:"speech,omitempty"`
+}
+
+type ServiceCallResponse struct {
+	ChangedStates   StateEntities              `json:"changed_states"`
+	StateChanges    StateEntities              `json:"state_changes,omitempty"`
+	ServiceResponse map[string]json.RawMessage `json:"service_response"`
+}
+
+type WeatherForecastRequest struct {
+	EntityId string `json:"entity_id"`
+	Type     string `json:"type,omitempty"`
+}
+
+type WeatherForecasts struct {
+	Forecast []WeatherForecast `json:"forecast"`
+}
+
+type WeatherForecast map[string]interface{}
+
 type StateResponse struct {
 	State
 	CreateCode  int       `json:"-"`
@@ -233,7 +304,7 @@ func createQueryString(startTime time.Time, filter interface{}) string {
 	queryParams := createParamMap(filter)
 
 	if len(queryParams) == 0 {
-		return ""
+		return startTimeString
 	}
 	return fmt.Sprintf("%s?%s", startTimeString, strings.Join(queryParams, "&"))
 }
@@ -244,12 +315,13 @@ func createParamMap(filter interface{}) []string {
 	for i := 0; i < v.NumField(); i++ {
 		paramName := v.Type().Field(i).Tag.Get("json")
 		if paramName != "" && !v.Field(i).IsZero() {
-			v := v.Field(i).Interface()
-			if t, ok := v.(time.Time); ok {
-				v = url.QueryEscape(t.Format(filterDateFormat))
+			fieldValue := v.Field(i).Interface()
+			value := fmt.Sprint(fieldValue)
+			if t, ok := fieldValue.(time.Time); ok {
+				value = t.Format(filterDateFormat)
 			}
 
-			queryParams = append(queryParams, fmt.Sprintf("%s=%s", paramName, v))
+			queryParams = append(queryParams, fmt.Sprintf("%s=%s", paramName, url.QueryEscape(value)))
 		}
 	}
 	return queryParams

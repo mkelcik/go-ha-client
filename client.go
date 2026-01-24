@@ -11,17 +11,20 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"time"
 )
 
 const (
 	epPing                = "/api/"
 	epConfig              = "/api/config"
+	epComponents          = "/api/components"
 	epDiscoveryInfo       = "/api/discovery_info"
 	epEvents              = "/api/events"
 	epServices            = "/api/services"
 	epHistoryStateChanges = "/api/history/period"
 	epLogbook             = "/api/logbook"
+	epCalendars           = "/api/calendars"
 	epState               = "/api/states"
 	epStateEntity         = "/api/states/%s"
 	epPlainErrorLog       = "/api/error_log"
@@ -29,6 +32,8 @@ const (
 	epCallService         = "/api/services/%s/%s"
 	epFireEvent           = "/api/events/%s"
 	epTemplate            = "/api/template"
+	epIntentHandle        = "/api/intent/handle"
+	epConversationProcess = "/api/conversation/process"
 	epConfigurationCheck  = "/api/config/core/check_config"
 )
 
@@ -66,6 +71,11 @@ func (c *Client) GetConfig(ctx context.Context) (Config, error) {
 	return config, c.doGetRequestJson(ctx, epConfig, &config)
 }
 
+func (c *Client) GetComponents(ctx context.Context) ([]string, error) {
+	components := []string{}
+	return components, c.doGetRequestJson(ctx, epComponents, &components)
+}
+
 func (c *Client) GetDiscoverInfo(ctx context.Context) (DiscoveryInfo, error) {
 	discoverInfo := DiscoveryInfo{}
 	return discoverInfo, c.doGetRequestJson(ctx, epDiscoveryInfo, &discoverInfo)
@@ -83,7 +93,11 @@ func (c *Client) GetServices(ctx context.Context) (Services, error) {
 
 func (c *Client) GetStateChangesHistory(ctx context.Context, filter *StateChangesFilter) (StateChanges, error) {
 	changes := StateChanges{}
-	return changes, c.doGetRequestJson(ctx, epHistoryStateChanges+filter.String(), &changes)
+	filterString := ""
+	if filter != nil {
+		filterString = filter.String()
+	}
+	return changes, c.doGetRequestJson(ctx, epHistoryStateChanges+filterString, &changes)
 }
 
 func (c *Client) GetStates(ctx context.Context) (StateEntities, error) {
@@ -99,9 +113,50 @@ func (c *Client) GetStateForEntity(ctx context.Context, entityId string) (StateE
 	return state, c.doGetRequestJson(ctx, fmt.Sprintf(epStateEntity, entityId), &state)
 }
 
+func (c *Client) DeleteState(ctx context.Context, entityId string) error {
+	if entityId == "" {
+		return errors.New("wrong entityId")
+	}
+	return c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(epStateEntity, entityId), nil, func(reader io.Reader) error {
+		return nil
+	})
+}
+
 func (c *Client) GetLogbook(ctx context.Context, filter *LogbookFilter) (LogbookRecords, error) {
 	logbookRecords := LogbookRecords{}
-	return logbookRecords, c.doGetRequestJson(ctx, epLogbook+filter.String(), &logbookRecords)
+	filterString := ""
+	if filter != nil {
+		filterString = filter.String()
+	}
+	return logbookRecords, c.doGetRequestJson(ctx, epLogbook+filterString, &logbookRecords)
+}
+
+func (c *Client) GetCalendars(ctx context.Context) (Calendars, error) {
+	calendars := Calendars{}
+	return calendars, c.doGetRequestJson(ctx, epCalendars, &calendars)
+}
+
+func (c *Client) GetCalendarEvents(ctx context.Context, calendarId string, start, end time.Time) (CalendarEvents, error) {
+	events := CalendarEvents{}
+	if calendarId == "" {
+		return events, errors.New("wrong calendarId")
+	}
+
+	query := url.Values{}
+	if !start.IsZero() {
+		query.Set("start", start.Format(time.RFC3339))
+	}
+	if !end.IsZero() {
+		query.Set("end", end.Format(time.RFC3339))
+	}
+
+	queryString := ""
+	if len(query) > 0 {
+		queryString = "?" + query.Encode()
+	}
+
+	endpoint := fmt.Sprintf("%s/%s%s", epCalendars, calendarId, queryString)
+	return events, c.doGetRequestJson(ctx, endpoint, &events)
 }
 
 func (c *Client) GetPlainErrorLog(ctx context.Context) (PlainText, error) {
@@ -138,7 +193,7 @@ func (c *Client) CreateState(ctx context.Context, entityId string, newState Stat
 	if respCode != nil {
 		response.CreateCode = *respCode
 	}
-	return response, nil
+	return response, err
 }
 
 func (c *Client) CallService(ctx context.Context, cmd DefaultServiceCmd) (StateEntities, error) {
@@ -155,10 +210,25 @@ func (c *Client) CallService(ctx context.Context, cmd DefaultServiceCmd) (StateE
 	return states, c.doPostRequestJson(ctx, fmt.Sprintf(epCallService, cmd.Domain, cmd.Service), cmd.Reader(), &states)
 }
 
+func (c *Client) CallServiceWithResponse(ctx context.Context, domain, service string, body io.Reader) (ServiceCallResponse, error) {
+	response := ServiceCallResponse{}
+
+	if service == "" {
+		return response, errors.New("empty service name")
+	}
+
+	if domain == "" {
+		return response, errors.New("empty domain name")
+	}
+
+	endpoint := fmt.Sprintf("%s?return_response", fmt.Sprintf(epCallService, domain, service))
+	return response, c.doPostRequestJson(ctx, endpoint, body, &response)
+}
+
 func (c *Client) FireEvent(ctx context.Context, eventType string, atTime *time.Time) (bool, error) {
 	reader := &bytes.Buffer{}
 	if atTime != nil {
-		if b, err := json.Marshal(newEventRising{NextRising: atTime}); err != nil {
+		if b, err := json.Marshal(newEventRising{NextRising: atTime}); err == nil {
 			reader = bytes.NewBuffer(b)
 		}
 	}
@@ -189,6 +259,64 @@ func (c *Client) RenderTemplate(ctx context.Context, template string) (string, e
 		rendered = string(tmp)
 		return nil
 	})
+}
+
+func (c *Client) HandleIntent(ctx context.Context, req IntentRequest) (IntentResponse, error) {
+	response := IntentResponse{}
+	if req.Name == "" {
+		return response, errors.New("empty intent name")
+	}
+
+	b, err := json.Marshal(req)
+	if err != nil {
+		return response, fmt.Errorf("error creating intent request: %w", err)
+	}
+
+	return response, c.doPostRequestJson(ctx, epIntentHandle, bytes.NewBuffer(b), &response)
+}
+
+func (c *Client) ProcessConversation(ctx context.Context, req ConversationProcessRequest) (ConversationProcessResponse, error) {
+	response := ConversationProcessResponse{}
+	if req.Text == "" {
+		return response, errors.New("empty text")
+	}
+
+	b, err := json.Marshal(req)
+	if err != nil {
+		return response, fmt.Errorf("error creating conversation request: %w", err)
+	}
+
+	return response, c.doPostRequestJson(ctx, epConversationProcess, bytes.NewBuffer(b), &response)
+}
+
+func (c *Client) GetWeatherForecasts(ctx context.Context, entityId, forecastType string) (WeatherForecasts, error) {
+	forecasts := WeatherForecasts{}
+	if entityId == "" {
+		return forecasts, errors.New("wrong entityId")
+	}
+
+	b, err := json.Marshal(WeatherForecastRequest{
+		EntityId: entityId,
+		Type:     forecastType,
+	})
+	if err != nil {
+		return forecasts, fmt.Errorf("error creating weather forecast request: %w", err)
+	}
+
+	resp, err := c.CallServiceWithResponse(ctx, "weather", "get_forecasts", bytes.NewBuffer(b))
+	if err != nil {
+		return forecasts, err
+	}
+
+	raw, ok := resp.ServiceResponse[entityId]
+	if !ok {
+		return forecasts, fmt.Errorf("missing service response for entity `%s`", entityId)
+	}
+
+	if err := json.Unmarshal(raw, &forecasts); err != nil {
+		return forecasts, fmt.Errorf("error decoding weather forecast response: %w", err)
+	}
+	return forecasts, nil
 }
 
 func (c *Client) TriggerConfigCheck(ctx context.Context) (ConfigurationCheckResult, error) {
