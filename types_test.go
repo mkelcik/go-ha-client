@@ -1,6 +1,7 @@
 package go_ha_client
 
 import (
+	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
@@ -53,5 +54,37 @@ func TestCreateQueryStringWithParams(t *testing.T) {
 		if !strings.Contains(got, part) {
 			t.Fatalf("missing part %q in %q", part, got)
 		}
+	}
+}
+
+func TestServiceMapUnmarshalList(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`["turn_on","turn_off"]`)
+	var m ServiceMap
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := m["turn_on"]; !ok {
+		t.Fatalf("missing turn_on")
+	}
+	if m["turn_on"].Name != "turn_on" {
+		t.Fatalf("unexpected service: %#v", m["turn_on"])
+	}
+}
+
+func TestServiceMapUnmarshalMap(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{"turn_on":{"name":"Turn On","description":"Turn on"}}`)
+	var m ServiceMap
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := m["turn_on"]; !ok {
+		t.Fatalf("missing turn_on")
+	}
+	if m["turn_on"].Description != "Turn on" {
+		t.Fatalf("unexpected service: %#v", m["turn_on"])
 	}
 }

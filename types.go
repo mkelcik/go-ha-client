@@ -32,6 +32,7 @@ type Config struct {
 	} `json:"unit_system"`
 	Version               string   `json:"version"`
 	WhitelistExternalDirs []string `json:"whitelist_external_dirs"`
+	AllowlistExternalDirs []string `json:"allowlist_external_dirs"`
 }
 
 type DiscoveryInfo struct {
@@ -51,8 +52,39 @@ type Event struct {
 type Services []ServiceDomain
 
 type ServiceDomain struct {
-	Domain   string             `json:"domain"`
-	Services map[string]Service `json:"services"`
+	Domain   string     `json:"domain"`
+	Services ServiceMap `json:"services"`
+}
+
+type ServiceMap map[string]Service
+
+func (m *ServiceMap) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" {
+		return nil
+	}
+
+	switch b[0] {
+	case '{':
+		var services map[string]Service
+		if err := json.Unmarshal(b, &services); err != nil {
+			return err
+		}
+		*m = services
+		return nil
+	case '[':
+		var list []string
+		if err := json.Unmarshal(b, &list); err != nil {
+			return err
+		}
+		services := make(map[string]Service, len(list))
+		for _, name := range list {
+			services[name] = Service{Name: name}
+		}
+		*m = services
+		return nil
+	default:
+		return fmt.Errorf("unexpected services JSON: %s", string(b))
+	}
 }
 
 type Service struct {
@@ -114,11 +146,14 @@ func (e *EntityChange) GetFriendlyName() string {
 type LogbookRecords []LogbookRecord
 
 type LogbookRecord struct {
-	When     time.Time `json:"when"`
-	Name     string    `json:"name"`
-	State    string    `json:"state"`
-	EntityId string    `json:"entity_id"`
-	Icon     string    `json:"icon"`
+	When          time.Time `json:"when"`
+	Name          string    `json:"name"`
+	Message       string    `json:"message"`
+	Domain        string    `json:"domain"`
+	EntityId      string    `json:"entity_id"`
+	ContextUserId *string   `json:"context_user_id"`
+	State         string    `json:"state"`
+	Icon          string    `json:"icon"`
 }
 
 type LogbookFilter struct {

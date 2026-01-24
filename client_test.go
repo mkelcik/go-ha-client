@@ -1,9 +1,12 @@
 package go_ha_client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +39,568 @@ func assertNoHandlerErr(t *testing.T, errCh chan error) {
 		t.Fatalf("handler error: %v", err)
 	default:
 	}
+}
+
+func TestPing(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	if err := client.Ping(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetConfig(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/config" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(Config{
+			Components:   []string{"light"},
+			ConfigDir:    "/config",
+			Elevation:    100,
+			Latitude:     48.7,
+			LocationName: "Home",
+			Longitude:    21.2,
+			TimeZone:     "Europe/Bratislava",
+			Version:      "2025.1.0",
+			WhitelistExternalDirs: []string{
+				"/media",
+			},
+			AllowlistExternalDirs: []string{
+				"/media",
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	cfg, err := client.GetConfig(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.LocationName != "Home" || cfg.TimeZone != "Europe/Bratislava" {
+		t.Fatalf("unexpected config: %#v", cfg)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetDiscoverInfo(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/discovery_info" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(DiscoveryInfo{
+			BaseUrl:             "http://localhost:8123",
+			LocationName:        "Home",
+			RequiresApiPassword: false,
+			Version:             "2025.1.0",
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	info, err := client.GetDiscoverInfo(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.BaseUrl == "" || info.Version == "" {
+		t.Fatalf("unexpected discovery info: %#v", info)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetEvents(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/events" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(Events{
+			{Event: "state_changed", ListenerCount: 1},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	events, err := client.GetEvents(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 || events[0].Event != "state_changed" {
+		t.Fatalf("unexpected events: %#v", events)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetServicesWithMap(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/services" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(Services{
+			{
+				Domain: "light",
+				Services: ServiceMap{
+					"turn_on": {
+						Name:        "Turn on",
+						Description: "Turn on",
+					},
+				},
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	services, err := client.GetServices(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(services) != 1 || services[0].Domain != "light" {
+		t.Fatalf("unexpected services: %#v", services)
+	}
+	if _, ok := services[0].Services["turn_on"]; !ok {
+		t.Fatalf("missing service: %#v", services[0].Services)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetServicesWithList(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/services" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		raw := []byte(`[{"domain":"light","services":["turn_on","turn_off"]}]`)
+		_, _ = w.Write(raw)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	services, err := client.GetServices(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(services) != 1 || services[0].Domain != "light" {
+		t.Fatalf("unexpected services: %#v", services)
+	}
+	if _, ok := services[0].Services["turn_on"]; !ok {
+		t.Fatalf("missing service: %#v", services[0].Services)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetStates(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/states" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(StateEntities{
+			{EntityId: "light.kitchen", State: "on"},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	states, err := client.GetStates(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(states) != 1 || states[0].EntityId != "light.kitchen" {
+		t.Fatalf("unexpected states: %#v", states)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetStateForEntity(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/states/light.kitchen" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(StateEntity{
+			EntityId: "light.kitchen",
+			State:    "on",
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	state, err := client.GetStateForEntity(context.Background(), "light.kitchen")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state.EntityId != "light.kitchen" || state.State != "on" {
+		t.Fatalf("unexpected state: %#v", state)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetLogbook(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2021, 7, 1, 10, 20, 30, 0, time.UTC)
+	end := time.Date(2021, 7, 2, 11, 22, 33, 0, time.UTC)
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/logbook/"+start.Format(filterDateFormat) {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		if r.URL.Query().Get("end_time") != end.Format(filterDateFormat) {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected end_time: %s", r.URL.Query().Get("end_time")))
+			return
+		}
+		if r.URL.Query().Get("entity") != "light.kitchen" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected entity: %s", r.URL.Query().Get("entity")))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(LogbookRecords{
+			{
+				When:     time.Date(2021, 7, 1, 10, 30, 0, 0, time.UTC),
+				Name:     "Kitchen",
+				Message:  "turned on",
+				Domain:   "light",
+				EntityId: "light.kitchen",
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	records, err := client.GetLogbook(context.Background(), &LogbookFilter{
+		StartTime: start,
+		EndTime:   end,
+		EntityId:  "light.kitchen",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(records) != 1 || records[0].EntityId != "light.kitchen" {
+		t.Fatalf("unexpected logbook: %#v", records)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetPlainErrorLog(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/error_log" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_, _ = w.Write([]byte("log line"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	log, err := client.GetPlainErrorLog(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(log) != "log line" {
+		t.Fatalf("unexpected log: %s", log)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetCameraJpeg(t *testing.T) {
+	t.Parallel()
+
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatalf("encode jpeg: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/camera_proxy/camera.kitchen" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_, _ = w.Write(buf.Bytes())
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	got, err := client.GetCameraJpeg(context.Background(), "camera.kitchen")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Bounds().Dx() != 2 || got.Bounds().Dy() != 2 {
+		t.Fatalf("unexpected image size: %#v", got.Bounds())
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestCreateStateSuccess(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/states/sensor.test" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
+			return
+		}
+		if !strings.Contains(string(body), `"state":"on"`) {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected body: %s", string(body)))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(StateResponse{
+			State: State{State: "on"},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	resp, err := client.CreateState(context.Background(), "sensor.test", State{State: "on"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Created() {
+		t.Fatalf("expected Created response")
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestCallService(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/services/light/turn_on" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
+			return
+		}
+		if !strings.Contains(string(body), `"entity_id":"light.kitchen"`) {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected body: %s", string(body)))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(StateEntities{
+			{EntityId: "light.kitchen", State: "on"},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	states, err := client.CallService(context.Background(), NewTurnLightOnCmd("light.kitchen"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(states) != 1 || states[0].EntityId != "light.kitchen" {
+		t.Fatalf("unexpected states: %#v", states)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestCallServiceWithResponse(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/services/light/turn_on" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		if r.URL.RawQuery != "return_response" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected query: %s", r.URL.RawQuery))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(ServiceCallResponse{
+			ChangedStates: StateEntities{
+				{EntityId: "light.kitchen", State: "on"},
+			},
+			ServiceResponse: map[string]json.RawMessage{
+				"light.kitchen": json.RawMessage(`{"success":true}`),
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	resp, err := client.CallServiceWithResponse(context.Background(), "light", "turn_on", strings.NewReader(`{"entity_id":"light.kitchen"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.ChangedStates) != 1 {
+		t.Fatalf("unexpected changed states: %#v", resp.ChangedStates)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestRenderTemplate(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/template" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
+			return
+		}
+		if !strings.Contains(string(body), "states") {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected body: %s", string(body)))
+			return
+		}
+		_, _ = w.Write([]byte("hello"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	rendered, err := client.RenderTemplate(context.Background(), "{{ states('sensor.test') }}")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rendered != "hello" {
+		t.Fatalf("unexpected rendered: %s", rendered)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestTriggerConfigCheck(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/config/core/check_config" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(ConfigurationCheckResult{
+			Result: "valid",
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	result, err := client.TriggerConfigCheck(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Result != "valid" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestGetStateChangesHistoryNilFilter(t *testing.T) {
