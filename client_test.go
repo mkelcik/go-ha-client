@@ -3,6 +3,7 @@ package go_ha_client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,15 +19,37 @@ func newTestClient(serverURL string) *Client {
 	}, &http.Client{})
 }
 
+func reportHandlerErr(errCh chan error, err error) {
+	if err == nil {
+		return
+	}
+	select {
+	case errCh <- err:
+	default:
+	}
+}
+
+func assertNoHandlerErr(t *testing.T, errCh chan error) {
+	t.Helper()
+	select {
+	case err := <-errCh:
+		t.Fatalf("handler error: %v", err)
+	default:
+	}
+}
+
 func TestGetStateChangesHistoryNilFilter(t *testing.T) {
 	t.Parallel()
 
+	errCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/history/period" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		_ = json.NewEncoder(w).Encode(StateChanges{})
 	}))
@@ -37,22 +60,27 @@ func TestGetStateChangesHistoryNilFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestFireEventWithTimeSendsBody(t *testing.T) {
 	t.Parallel()
 
+	errCh := make(chan error, 1)
 	var gotBody string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/events/sunrise" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Fatalf("read body: %v", err)
+			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
+			return
 		}
 		gotBody = string(body)
 		w.WriteHeader(http.StatusOK)
@@ -71,6 +99,7 @@ func TestFireEventWithTimeSendsBody(t *testing.T) {
 	if !strings.Contains(gotBody, "next_rising") {
 		t.Fatalf("expected next_rising in body, got: %s", gotBody)
 	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestCreateStatePropagatesError(t *testing.T) {
@@ -91,12 +120,15 @@ func TestCreateStatePropagatesError(t *testing.T) {
 func TestGetComponents(t *testing.T) {
 	t.Parallel()
 
+	errCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/components" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		_ = json.NewEncoder(w).Encode([]string{"light", "switch"})
 	}))
@@ -110,17 +142,21 @@ func TestGetComponents(t *testing.T) {
 	if len(components) != 2 || components[0] != "light" || components[1] != "switch" {
 		t.Fatalf("unexpected components: %#v", components)
 	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestDeleteState(t *testing.T) {
 	t.Parallel()
 
+	errCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/states/sensor.test" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -130,17 +166,21 @@ func TestDeleteState(t *testing.T) {
 	if err := client.DeleteState(context.Background(), "sensor.test"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestGetCalendars(t *testing.T) {
 	t.Parallel()
 
+	errCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/calendars" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		_ = json.NewEncoder(w).Encode(Calendars{
 			{Name: "Home", EntityId: "calendar.home"},
@@ -156,6 +196,7 @@ func TestGetCalendars(t *testing.T) {
 	if len(calendars) != 1 || calendars[0].EntityId != "calendar.home" {
 		t.Fatalf("unexpected calendars: %#v", calendars)
 	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestGetCalendarEvents(t *testing.T) {
@@ -164,18 +205,23 @@ func TestGetCalendarEvents(t *testing.T) {
 	start := time.Date(2021, 8, 1, 10, 0, 0, 0, time.UTC)
 	end := time.Date(2021, 8, 2, 11, 0, 0, 0, time.UTC)
 
+	errCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/calendars/calendar.home" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		if r.URL.Query().Get("start") != start.Format(time.RFC3339) {
-			t.Fatalf("unexpected start: %s", r.URL.Query().Get("start"))
+			reportHandlerErr(errCh, fmt.Errorf("unexpected start: %s", r.URL.Query().Get("start")))
+			return
 		}
 		if r.URL.Query().Get("end") != end.Format(time.RFC3339) {
-			t.Fatalf("unexpected end: %s", r.URL.Query().Get("end"))
+			reportHandlerErr(errCh, fmt.Errorf("unexpected end: %s", r.URL.Query().Get("end")))
+			return
 		}
 		_ = json.NewEncoder(w).Encode(CalendarEvents{
 			{
@@ -195,24 +241,30 @@ func TestGetCalendarEvents(t *testing.T) {
 	if len(events) != 1 || events[0].Summary != "Test" {
 		t.Fatalf("unexpected events: %#v", events)
 	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestHandleIntent(t *testing.T) {
 	t.Parallel()
 
+	errCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/intent/handle" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Fatalf("read body: %v", err)
+			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
+			return
 		}
 		if !strings.Contains(string(body), `"name":"TurnOn"`) {
-			t.Fatalf("unexpected body: %s", string(body))
+			reportHandlerErr(errCh, fmt.Errorf("unexpected body: %s", string(body)))
+			return
 		}
 		_ = json.NewEncoder(w).Encode(IntentResponse{
 			Response: map[string]interface{}{
@@ -237,30 +289,38 @@ func TestHandleIntent(t *testing.T) {
 	if resp.Response == nil {
 		t.Fatalf("expected response data")
 	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestGetWeatherForecasts(t *testing.T) {
 	t.Parallel()
 
+	errCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/services/weather/get_forecasts" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		if r.URL.RawQuery != "return_response" {
-			t.Fatalf("unexpected query: %s", r.URL.RawQuery)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected query: %s", r.URL.RawQuery))
+			return
 		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Fatalf("read body: %v", err)
+			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
+			return
 		}
 		if !strings.Contains(string(body), `"entity_id":"weather.home"`) {
-			t.Fatalf("unexpected body: %s", string(body))
+			reportHandlerErr(errCh, fmt.Errorf("unexpected body: %s", string(body)))
+			return
 		}
 		if !strings.Contains(string(body), `"type":"daily"`) {
-			t.Fatalf("unexpected body: %s", string(body))
+			reportHandlerErr(errCh, fmt.Errorf("unexpected body: %s", string(body)))
+			return
 		}
 		_ = json.NewEncoder(w).Encode(ServiceCallResponse{
 			ChangedStates: StateEntities{},
@@ -282,24 +342,30 @@ func TestGetWeatherForecasts(t *testing.T) {
 	if forecasts.Forecast[0]["condition"] != "sunny" {
 		t.Fatalf("unexpected forecast content: %#v", forecasts.Forecast[0])
 	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestProcessConversation(t *testing.T) {
 	t.Parallel()
 
+	errCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			t.Fatalf("unexpected method: %s", r.Method)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
 		}
 		if r.URL.Path != "/api/conversation/process" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
 		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Fatalf("read body: %v", err)
+			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
+			return
 		}
 		if !strings.Contains(string(body), `"text":"Turn on kitchen lights"`) {
-			t.Fatalf("unexpected body: %s", string(body))
+			reportHandlerErr(errCh, fmt.Errorf("unexpected body: %s", string(body)))
+			return
 		}
 		_ = json.NewEncoder(w).Encode(ConversationProcessResponse{
 			ContinueConversation: false,
@@ -328,4 +394,5 @@ func TestProcessConversation(t *testing.T) {
 	if resp.Response.ResponseType != "action_done" {
 		t.Fatalf("unexpected response: %#v", resp.Response)
 	}
+	assertNoHandlerErr(t, errCh)
 }

@@ -38,6 +38,7 @@ const (
 
 var ErrNotFound = errors.New("not found")
 var ErrUnauthorized = errors.New("unauthorized")
+var ErrEmptyEntityID = errors.New("entityId must not be empty")
 
 type badRequestResponse struct {
 	Message string `json:"message"`
@@ -107,14 +108,14 @@ func (c *Client) GetStates(ctx context.Context) (StateEntities, error) {
 func (c *Client) GetStateForEntity(ctx context.Context, entityId string) (StateEntity, error) {
 	state := StateEntity{}
 	if entityId == "" {
-		return state, errors.New("wrong entityId")
+		return state, ErrEmptyEntityID
 	}
 	return state, c.doGetRequestJson(ctx, fmt.Sprintf(epStateEntity, entityId), &state)
 }
 
 func (c *Client) DeleteState(ctx context.Context, entityId string) error {
 	if entityId == "" {
-		return errors.New("wrong entityId")
+		return ErrEmptyEntityID
 	}
 	return c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(epStateEntity, entityId), nil, func(reader io.Reader) error {
 		return nil
@@ -165,7 +166,7 @@ func (c *Client) GetPlainErrorLog(ctx context.Context) (PlainText, error) {
 
 func (c *Client) GetCameraJpeg(ctx context.Context, cameraEntityId string) (image.Image, error) {
 	if cameraEntityId == "" {
-		return nil, errors.New("wrong entityId")
+		return nil, ErrEmptyEntityID
 	}
 	var img image.Image
 	return img, c.doRequest(ctx, http.MethodGet, fmt.Sprintf(epCameraProxy, cameraEntityId), nil, func(reader io.Reader) error {
@@ -227,9 +228,11 @@ func (c *Client) CallServiceWithResponse(ctx context.Context, domain, service st
 func (c *Client) FireEvent(ctx context.Context, eventType string, atTime *time.Time) (bool, error) {
 	reader := &bytes.Buffer{}
 	if atTime != nil {
-		if b, err := json.Marshal(newEventRising{NextRising: atTime}); err == nil {
-			reader = bytes.NewBuffer(b)
+		b, err := json.Marshal(newEventRising{NextRising: atTime})
+		if err != nil {
+			return false, fmt.Errorf("error creating event request body: %w", err)
 		}
+		reader = bytes.NewBuffer(b)
 	}
 	if err := c.doPostRequestJson(ctx, fmt.Sprintf(epFireEvent, eventType), reader, nil); err != nil {
 		return false, err
@@ -291,7 +294,7 @@ func (c *Client) ProcessConversation(ctx context.Context, req ConversationProces
 func (c *Client) GetWeatherForecasts(ctx context.Context, entityId, forecastType string) (WeatherForecasts, error) {
 	forecasts := WeatherForecasts{}
 	if entityId == "" {
-		return forecasts, errors.New("wrong entityId")
+		return forecasts, ErrEmptyEntityID
 	}
 
 	b, err := json.Marshal(WeatherForecastRequest{
