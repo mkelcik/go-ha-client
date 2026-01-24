@@ -88,3 +88,18 @@ func TestServiceMapUnmarshalMap(t *testing.T) {
 		t.Fatalf("unexpected service: %#v", m["turn_on"])
 	}
 }
+
+func TestServiceMapUnmarshalNull(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`null`)
+	m := ServiceMap{
+		"turn_on": {Name: "Turn On"},
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if m != nil {
+		t.Fatalf("expected nil map, got: %#v", m)
+	}
+}

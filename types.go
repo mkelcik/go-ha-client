@@ -16,6 +16,7 @@ const (
 	filterDateFormat = "2006-01-02T15:04:05-07:00"
 )
 
+// Config represents the Home Assistant configuration.
 type Config struct {
 	Components   []string `json:"components"`
 	ConfigDir    string   `json:"config_dir"`
@@ -35,6 +36,7 @@ type Config struct {
 	AllowlistExternalDirs []string `json:"allowlist_external_dirs"`
 }
 
+// DiscoveryInfo represents the discovery information.
 type DiscoveryInfo struct {
 	BaseUrl             string `json:"base_url"`
 	LocationName        string `json:"location_name"`
@@ -42,24 +44,30 @@ type DiscoveryInfo struct {
 	Version             string `json:"version"`
 }
 
+// Events is a list of events.
 type Events []Event
 
+// Event represents a single event listener count.
 type Event struct {
 	Event         string `json:"event"`
 	ListenerCount int    `json:"listener_count"`
 }
 
+// Services is a list of service domains.
 type Services []ServiceDomain
 
+// ServiceDomain represents a service domain and its services.
 type ServiceDomain struct {
 	Domain   string     `json:"domain"`
 	Services ServiceMap `json:"services"`
 }
 
+// ServiceMap is a map of services.
 type ServiceMap map[string]Service
 
 func (m *ServiceMap) UnmarshalJSON(b []byte) error {
 	if len(b) == 0 || string(b) == "null" {
+		*m = nil
 		return nil
 	}
 
@@ -87,6 +95,7 @@ func (m *ServiceMap) UnmarshalJSON(b []byte) error {
 	}
 }
 
+// Service represents a service definition.
 type Service struct {
 	Name        string                  `json:"name"`
 	Description string                  `json:"description"`
@@ -96,6 +105,7 @@ type Service struct {
 	} `json:"target"`
 }
 
+// ServiceField represents a field in a service definition.
 type ServiceField struct {
 	Advanced    bool                              `json:"advanced"`
 	Name        string                            `json:"name"`
@@ -119,8 +129,10 @@ func (f *StateChangesFilter) String() string {
 	return createQueryString(f.StartTime, f)
 }
 
+// StateChanges is a list of state changes for entities.
 type StateChanges [][]EntityChange
 
+// EntityChange represents a change in an entity's state.
 type EntityChange struct {
 	EntityId    string                 `json:"entity_id"`
 	State       string                 `json:"state"`
@@ -129,6 +141,7 @@ type EntityChange struct {
 	LastUpdated time.Time              `json:"last_updated"`
 }
 
+// GetFriendlyName returns the friendly name of the entity if available.
 func (e *EntityChange) GetFriendlyName() string {
 	v, ok := e.Attributes["friendly_name"]
 	if !ok {
@@ -143,8 +156,10 @@ func (e *EntityChange) GetFriendlyName() string {
 	return name
 }
 
+// LogbookRecords is a list of logbook records.
 type LogbookRecords []LogbookRecord
 
+// LogbookRecord represents a single logbook entry.
 type LogbookRecord struct {
 	When          time.Time `json:"when"`
 	Name          string    `json:"name"`
@@ -156,6 +171,7 @@ type LogbookRecord struct {
 	Icon          string    `json:"icon"`
 }
 
+// LogbookFilter defines filter for logbook queries.
 type LogbookFilter struct {
 	StartTime time.Time
 	EndTime   time.Time `json:"end_time"`
@@ -166,17 +182,22 @@ func (f *LogbookFilter) String() string {
 	return createQueryString(f.StartTime, f)
 }
 
+// StateEntities is a list of state entities.
 type StateEntities []StateEntity
 
+// Calendars is a list of calendars.
 type Calendars []Calendar
 
+// Calendar represents a calendar entity.
 type Calendar struct {
 	Name     string `json:"name"`
 	EntityId string `json:"entity_id"`
 }
 
+// CalendarEvents is a list of calendar events.
 type CalendarEvents []CalendarEvent
 
+// CalendarEvent represents a single calendar event.
 type CalendarEvent struct {
 	Summary     string            `json:"summary"`
 	Description string            `json:"description,omitempty"`
@@ -186,12 +207,14 @@ type CalendarEvent struct {
 	End         CalendarEventTime `json:"end"`
 }
 
+// CalendarEventTime represents the time of a calendar event.
 type CalendarEventTime struct {
 	Date     string `json:"date,omitempty"`
 	DateTime string `json:"dateTime,omitempty"`
 	TimeZone string `json:"timeZone,omitempty"`
 }
 
+// StateEntity represents the state of an entity.
 type StateEntity struct {
 	EntityId    string                 `json:"entity_id"`
 	State       string                 `json:"state"`
@@ -205,6 +228,7 @@ type StateEntity struct {
 	} `json:"context"`
 }
 
+// PlainText represents plain text response.
 type PlainText string
 
 // NewTurnLightOnCmd is helper for turning light on
@@ -234,6 +258,7 @@ func NewToggleLightTCmd(entityId string) DefaultServiceCmd {
 	}
 }
 
+// DefaultServiceCmd is a default implementation of a service call command.
 type DefaultServiceCmd struct {
 	Service  string `json:"-"`
 	Domain   string `json:"-"`
@@ -248,20 +273,24 @@ type templateRequest struct {
 	Template string `json:"template"`
 }
 
+// ConfigurationCheckResult represents the result of a configuration check.
 type ConfigurationCheckResult struct {
 	Errors *string `json:"errors"`
 	Result string  `json:"result"`
 }
 
+// IntentRequest represents a request to handle an intent.
 type IntentRequest struct {
 	Name string                 `json:"name"`
 	Data map[string]interface{} `json:"data,omitempty"`
 }
 
+// IntentResponse represents the response from intent handling.
 type IntentResponse struct {
 	Response map[string]interface{} `json:"response"`
 }
 
+// ConversationProcessRequest represents a request to process conversation text.
 type ConversationProcessRequest struct {
 	Text           string `json:"text"`
 	Language       string `json:"language,omitempty"`
@@ -269,12 +298,14 @@ type ConversationProcessRequest struct {
 	ConversationId string `json:"conversation_id,omitempty"`
 }
 
+// ConversationProcessResponse represents the response from conversation processing.
 type ConversationProcessResponse struct {
 	ContinueConversation bool                 `json:"continue_conversation,omitempty"`
 	ConversationId       string               `json:"conversation_id,omitempty"`
 	Response             ConversationResponse `json:"response"`
 }
 
+// ConversationResponse represents the inner response data of a conversation.
 type ConversationResponse struct {
 	ResponseType string                 `json:"response_type,omitempty"`
 	Language     string                 `json:"language,omitempty"`
@@ -282,23 +313,28 @@ type ConversationResponse struct {
 	Speech       map[string]interface{} `json:"speech,omitempty"`
 }
 
+// ServiceCallResponse represents the response from a service call when return_response is requested.
 type ServiceCallResponse struct {
 	ChangedStates   StateEntities              `json:"changed_states"`
 	StateChanges    StateEntities              `json:"state_changes,omitempty"`
 	ServiceResponse map[string]json.RawMessage `json:"service_response"`
 }
 
+// WeatherForecastRequest represents a request for weather forecast.
 type WeatherForecastRequest struct {
 	EntityId string `json:"entity_id"`
 	Type     string `json:"type,omitempty"`
 }
 
+// WeatherForecasts represents a list of weather forecasts.
 type WeatherForecasts struct {
 	Forecast []WeatherForecast `json:"forecast"`
 }
 
+// WeatherForecast represents a single weather forecast entry.
 type WeatherForecast map[string]interface{}
 
+// StateResponse represents the response from creating or updating a state.
 type StateResponse struct {
 	State
 	CreateCode  int       `json:"-"`
@@ -307,19 +343,23 @@ type StateResponse struct {
 	LastUpdated time.Time `json:"last_updated"`
 }
 
+// Created returns true if the state was created.
 func (s StateResponse) Created() bool {
 	return s.CreateCode == http.StatusCreated
 }
 
+// Updated returns true if the state was updated.
 func (s StateResponse) Updated() bool {
 	return s.CreateCode == http.StatusOK
 }
 
+// State represents the core state data.
 type State struct {
 	State      string                 `json:"state"`
 	Attributes map[string]interface{} `json:"attributes"`
 }
 
+// Reader returns an io.Reader for the service command body.
 func (c DefaultServiceCmd) Reader() io.Reader {
 	b, _ := json.Marshal(c)
 	return bytes.NewBuffer(b)

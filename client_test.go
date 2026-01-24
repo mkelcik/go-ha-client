@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -305,6 +306,37 @@ func TestGetStateForEntity(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
+func TestGetStateForEntityEscapesEntityId(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.EscapedPath() != "/api/states/light.kitchen%2F1" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.EscapedPath()))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(StateEntity{
+			EntityId: "light.kitchen/1",
+			State:    "on",
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	state, err := client.GetStateForEntity(context.Background(), "light.kitchen/1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state.EntityId != "light.kitchen/1" || state.State != "on" {
+		t.Fatalf("unexpected state: %#v", state)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
 func TestGetLogbook(t *testing.T) {
 	t.Parallel()
 
@@ -458,6 +490,16 @@ func TestCreateStateSuccess(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
+func TestCreateStateEmptyEntityId(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient("http://localhost")
+	_, err := client.CreateState(context.Background(), "", State{State: "on"})
+	if !errors.Is(err, ErrEmptyEntityID) {
+		t.Fatalf("expected ErrEmptyEntityID, got: %v", err)
+	}
+}
+
 func TestCallService(t *testing.T) {
 	t.Parallel()
 
@@ -469,6 +511,10 @@ func TestCallService(t *testing.T) {
 		}
 		if r.URL.Path != "/api/services/light/turn_on" {
 			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected content-type: %s", ct))
 			return
 		}
 		body, err := io.ReadAll(r.Body)
@@ -493,6 +539,37 @@ func TestCallService(t *testing.T) {
 	}
 	if len(states) != 1 || states[0].EntityId != "light.kitchen" {
 		t.Fatalf("unexpected states: %#v", states)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestCallServiceEscapesDomainAndService(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.EscapedPath() != "/api/services/light%2Fspecial/turn%20on" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.EscapedPath()))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(StateEntities{
+			{EntityId: "light.kitchen", State: "on"},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	_, err := client.CallService(context.Background(), DefaultServiceCmd{
+		Domain:   "light/special",
+		Service:  "turn on",
+		EntityId: "light.kitchen",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	assertNoHandlerErr(t, errCh)
 }
@@ -809,6 +886,51 @@ func TestGetCalendarEvents(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
+func TestGetCalendarEventsEscapesCalendarId(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2021, 8, 1, 10, 0, 0, 0, time.UTC)
+	end := time.Date(2021, 8, 2, 11, 0, 0, 0, time.UTC)
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.EscapedPath() != "/api/calendars/calendar.home%2F1" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.EscapedPath()))
+			return
+		}
+		if r.URL.Query().Get("start") != start.Format(time.RFC3339) {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected start: %s", r.URL.Query().Get("start")))
+			return
+		}
+		if r.URL.Query().Get("end") != end.Format(time.RFC3339) {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected end: %s", r.URL.Query().Get("end")))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(CalendarEvents{
+			{
+				Summary: "Test",
+				Start:   CalendarEventTime{DateTime: "2021-08-01T10:00:00Z"},
+				End:     CalendarEventTime{DateTime: "2021-08-01T11:00:00Z"},
+			},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	events, err := client.GetCalendarEvents(context.Background(), "calendar.home/1", start, end)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 || events[0].Summary != "Test" {
+		t.Fatalf("unexpected events: %#v", events)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
 func TestHandleIntent(t *testing.T) {
 	t.Parallel()
 
@@ -960,4 +1082,68 @@ func TestProcessConversation(t *testing.T) {
 		t.Fatalf("unexpected response: %#v", resp.Response)
 	}
 	assertNoHandlerErr(t, errCh)
+}
+
+type errorRoundTripper struct {
+	err error
+}
+
+func (e errorRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return nil, e.err
+}
+
+func TestDoRequestWrapsRoundTripError(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient(ClientConfig{Token: "token", Host: "http://example.com"}, &http.Client{
+		Transport: errorRoundTripper{err: errors.New("network down")},
+	})
+
+	_, err := client.GetConfig(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "network down") {
+		t.Fatalf("expected wrapped error, got: %v", err)
+	}
+}
+
+func TestBadRequestFallbackError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("not-json"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	if err := client.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "bad request") {
+		t.Fatalf("expected bad request error, got: %v", err)
+	}
+}
+
+func TestUnauthorizedError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	if err := client.Ping(context.Background()); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized, got: %v", err)
+	}
+}
+
+func TestNotFoundError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	if err := client.Ping(context.Background()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got: %v", err)
+	}
 }
