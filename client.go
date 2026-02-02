@@ -50,6 +50,7 @@ var (
 	ErrEmptyTemplate   = errors.New("empty template")
 	ErrEmptyService    = errors.New("empty service name")
 	ErrEmptyDomain     = errors.New("empty domain name")
+	ErrEmptyEventType  = errors.New("eventType must not be empty")
 	ErrEmptyText       = errors.New("empty text")
 	ErrEmptyIntentName = errors.New("empty intent name")
 )
@@ -268,6 +269,10 @@ func (c *Client) CallServiceWithResponse(ctx context.Context, domain, service st
 
 // FireEvent fires an event.
 func (c *Client) FireEvent(ctx context.Context, eventType string, atTime *time.Time) (bool, error) {
+	if eventType == "" {
+		return false, ErrEmptyEventType
+	}
+
 	reader := &bytes.Buffer{}
 	if atTime != nil {
 		b, err := json.Marshal(newEventRising{NextRising: atTime})
@@ -458,6 +463,10 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 	}
 
 	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if len(body) > 0 {
+			return nil, fmt.Errorf("wrong response code `%d`: %s", resp.StatusCode, string(body))
+		}
 		return nil, fmt.Errorf("wrong response code `%d`", resp.StatusCode)
 	}
 

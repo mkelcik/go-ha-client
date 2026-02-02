@@ -752,6 +752,19 @@ func TestFireEventWithTimeSendsBody(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
+func TestFireEventEmptyEventType(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient("http://localhost")
+	ok, err := client.FireEvent(context.Background(), "", nil)
+	if ok {
+		t.Fatalf("expected ok=false")
+	}
+	if !errors.Is(err, ErrEmptyEventType) {
+		t.Fatalf("expected ErrEmptyEventType, got: %v", err)
+	}
+}
+
 func TestCreateStatePropagatesError(t *testing.T) {
 	t.Parallel()
 
@@ -1153,5 +1166,49 @@ func TestNotFoundError(t *testing.T) {
 	client := newTestClient(server.URL)
 	if err := client.Ping(context.Background()); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got: %v", err)
+	}
+}
+
+func TestGenericHttpErrorIncludesResponseBody(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal boom"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	err := client.Ping(context.Background())
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(err.Error(), "500") || !strings.Contains(err.Error(), "internal boom") {
+		t.Fatalf("expected status and body in error, got: %v", err)
+	}
+}
+
+func TestGenericHttpErrorTruncatesLongResponseBody(t *testing.T) {
+	t.Parallel()
+
+	longBody := strings.Repeat("a", 1024) + "TRUNCATE_MARKER"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(longBody))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(server.URL)
+	err := client.Ping(context.Background())
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "500") {
+		t.Fatalf("expected status code in error, got: %v", err)
+	}
+	if strings.Contains(errMsg, "TRUNCATE_MARKER") {
+		t.Fatalf("expected truncated body, got: %v", err)
 	}
 }
