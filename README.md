@@ -13,6 +13,12 @@ Tested with home-assistant `core-2021.7.2`.
 - Go `1.24.12+`
 - Home Assistant with long-lived access token
 
+### Project docs
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Changelog](CHANGELOG.md)
+
 ### Install
 ```bash
 go get github.com/mkelcik/go-ha-client/v2@latest
