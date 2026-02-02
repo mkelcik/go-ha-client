@@ -16,6 +16,31 @@ const (
 	filterDateFormat = "2006-01-02T15:04:05-07:00"
 )
 
+// Common Home Assistant domain names for service calls.
+const (
+	DomainLight   = "light"
+	DomainSwitch  = "switch"
+	DomainScript  = "script"
+	DomainScene   = "scene"
+	DomainWeather = "weather"
+)
+
+// Common Home Assistant service names for service calls.
+const (
+	ServiceTurnOn      = "turn_on"
+	ServiceTurnOff     = "turn_off"
+	ServiceToggle      = "toggle"
+	ServiceGetForecast = "get_forecasts"
+)
+
+// Common Home Assistant event types.
+const (
+	EventTypeStateChanged       = "state_changed"
+	EventTypeCallService        = "call_service"
+	EventTypeHomeAssistantStart = "homeassistant_start"
+	EventTypeHomeAssistantStop  = "homeassistant_stop"
+)
+
 // Config represents the Home Assistant configuration.
 type Config struct {
 	Components   []string `json:"components"`
@@ -234,8 +259,8 @@ type PlainText string
 // NewTurnLightOnCmd is helper for turning light on
 func NewTurnLightOnCmd(entityId string) DefaultServiceCmd {
 	return DefaultServiceCmd{
-		Service:  "turn_on",
-		Domain:   "light",
+		Service:  ServiceTurnOn,
+		Domain:   DomainLight,
 		EntityId: entityId,
 	}
 }
@@ -243,8 +268,8 @@ func NewTurnLightOnCmd(entityId string) DefaultServiceCmd {
 // NewTurnLightOffCmd is helper for turning light off
 func NewTurnLightOffCmd(entityId string) DefaultServiceCmd {
 	return DefaultServiceCmd{
-		Service:  "turn_off",
-		Domain:   "light",
+		Service:  ServiceTurnOff,
+		Domain:   DomainLight,
 		EntityId: entityId,
 	}
 }
@@ -252,9 +277,16 @@ func NewTurnLightOffCmd(entityId string) DefaultServiceCmd {
 // NewToggleLightTCmd is helper for turning light off
 func NewToggleLightTCmd(entityId string) DefaultServiceCmd {
 	return DefaultServiceCmd{
-		Service:  "toggle",
-		Domain:   "light",
+		Service:  ServiceToggle,
+		Domain:   DomainLight,
 		EntityId: entityId,
+	}
+}
+
+// NewServiceDataEntityID builds service_data payload with a single entity_id.
+func NewServiceDataEntityID(entityID string) map[string]interface{} {
+	return map[string]interface{}{
+		"entity_id": entityID,
 	}
 }
 

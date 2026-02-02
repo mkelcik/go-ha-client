@@ -4,6 +4,9 @@ Go client for Home Assistant REST API.
 This client targets the official REST API documentation:
 https://developers.home-assistant.io/docs/api/rest
 
+It also includes WebSocket API client helpers based on:
+https://developers.home-assistant.io/docs/api/websocket
+
 Tested with home-assistant `core-2021.7.2`.
 
 
@@ -148,4 +151,64 @@ if err != nil {
 	panic(err)
 }
 fmt.Println(forecast.Forecast)
+```
+
+### WebSocket examples
+
+Connect and subscribe to state changes
+```go
+ws := client.WS()
+if err := ws.Connect(context.Background()); err != nil {
+	panic(err)
+}
+defer ws.Close()
+
+sub, err := ws.SubscribeEvents(context.Background(), "state_changed")
+if err != nil {
+	panic(err)
+}
+defer sub.Unsubscribe(context.Background())
+
+for ev := range sub.Events() {
+	if ev.EventType == "state_changed" && strings.Contains(string(ev.Data), `"entity_id":"light.kitchen"`) {
+		fmt.Println("light.kitchen changed", string(ev.Data))
+	}
+}
+```
+
+Call a service over WebSocket
+```go
+result, err := ws.CallService(
+	context.Background(),
+	ha.DomainLight,
+	ha.ServiceTurnOn,
+	ha.NewServiceDataEntityID("light.kitchen"),
+)
+if err != nil {
+	panic(err)
+}
+fmt.Println("context id:", result.Context.ID)
+```
+
+Print message when a specific light turns on
+```go
+ws := client.WS()
+if err := ws.Connect(context.Background()); err != nil {
+	panic(err)
+}
+defer ws.Close()
+
+sub, err := ws.SubscribeEvents(context.Background(), ha.EventTypeStateChanged)
+if err != nil {
+	panic(err)
+}
+defer sub.Unsubscribe(context.Background())
+
+for ev := range sub.Events() {
+	// quick filter for the desired light and "on" state
+	if strings.Contains(string(ev.Data), `"entity_id":"light.kitchen"`) &&
+		strings.Contains(string(ev.Data), `"state":"on"`) {
+		fmt.Println("light.kitchen is ON")
+	}
+}
 ```

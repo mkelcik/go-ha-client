@@ -103,3 +103,16 @@ func TestServiceMapUnmarshalNull(t *testing.T) {
 		t.Fatalf("expected nil map, got: %#v", m)
 	}
 }
+
+func TestNewServiceDataEntityID(t *testing.T) {
+	t.Parallel()
+
+	data := NewServiceDataEntityID("light.kitchen")
+	v, ok := data["entity_id"]
+	if !ok {
+		t.Fatalf("missing entity_id key")
+	}
+	if v != "light.kitchen" {
+		t.Fatalf("unexpected entity_id value: %#v", v)
+	}
+}

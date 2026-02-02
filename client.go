@@ -358,7 +358,7 @@ func (c *Client) GetWeatherForecasts(ctx context.Context, entityId, forecastType
 		return forecasts, fmt.Errorf("error creating weather forecast request: %w", err)
 	}
 
-	resp, err := c.CallServiceWithResponse(ctx, "weather", "get_forecasts", bytes.NewBuffer(b))
+	resp, err := c.CallServiceWithResponse(ctx, DomainWeather, ServiceGetForecast, bytes.NewBuffer(b))
 	if err != nil {
 		return forecasts, err
 	}
