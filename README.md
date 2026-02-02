@@ -9,6 +9,19 @@ https://developers.home-assistant.io/docs/api/websocket
 
 Tested with home-assistant `core-2021.7.2`.
 
+### Requirements
+- Go `1.24.12+`
+- Home Assistant with long-lived access token
+
+### Install
+```bash
+go get github.com/mkelcik/go-ha-client/v2@latest
+```
+
+### REST vs WebSocket
+- Use **REST** for request/response operations (query state, call service, render template).
+- Use **WebSocket** for realtime subscriptions (`state_changed`, triggers, live event stream).
+
 
 ### Basic usage
 Change `Token` and `Host` to your actual home-assistant bearer token and address
@@ -62,9 +75,9 @@ if _, err := client.CallService(context.Background(), ha.NewTurnLightOffCmd("lig
 ```
 or turn `switch.switch_1` off without helper
 ```go
-if _, err := client.CallService(context.Background(), DefaultServiceCmd{
-    Service:  "turn_off",
-    Domain:   "switch", 
+if _, err := client.CallService(context.Background(), ha.DefaultServiceCmd{
+    Service:  ha.ServiceTurnOff,
+    Domain:   ha.DomainSwitch, 
     EntityId: "switch.switch_1",
 }); err != nil {
 	panic(err)
@@ -163,15 +176,29 @@ if err := ws.Connect(context.Background()); err != nil {
 }
 defer ws.Close()
 
-sub, err := ws.SubscribeEvents(context.Background(), "state_changed")
+sub, err := ws.SubscribeEvents(context.Background(), ha.EventTypeStateChanged)
 if err != nil {
 	panic(err)
 }
 defer sub.Unsubscribe(context.Background())
 
+type StateChangedEvent struct {
+	EntityID string `json:"entity_id"`
+	NewState struct {
+		State string `json:"state"`
+	} `json:"new_state"`
+}
+
 for ev := range sub.Events() {
-	if ev.EventType == "state_changed" && strings.Contains(string(ev.Data), `"entity_id":"light.kitchen"`) {
-		fmt.Println("light.kitchen changed", string(ev.Data))
+	if ev.EventType != ha.EventTypeStateChanged {
+		continue
+	}
+	var data StateChangedEvent
+	if err := json.Unmarshal(ev.Data, &data); err != nil {
+		continue
+	}
+	if data.EntityID == "light.kitchen" {
+		fmt.Println("light.kitchen changed", data.NewState.State)
 	}
 }
 ```
@@ -205,10 +232,34 @@ if err != nil {
 defer sub.Unsubscribe(context.Background())
 
 for ev := range sub.Events() {
-	// quick filter for the desired light and "on" state
-	if strings.Contains(string(ev.Data), `"entity_id":"light.kitchen"`) &&
-		strings.Contains(string(ev.Data), `"state":"on"`) {
+	var data struct {
+		EntityID string `json:"entity_id"`
+		NewState struct {
+			State string `json:"state"`
+		} `json:"new_state"`
+	}
+	if err := json.Unmarshal(ev.Data, &data); err != nil {
+		continue
+	}
+	if data.EntityID == "light.kitchen" && data.NewState.State == "on" {
 		fmt.Println("light.kitchen is ON")
 	}
 }
 ```
+
+### Error handling
+Use sentinel errors with `errors.Is`:
+```go
+if _, err := client.GetStateForEntity(ctx, ""); errors.Is(err, ha.ErrEmptyEntityID) {
+	fmt.Println("entity id is required")
+}
+
+if err := client.Ping(ctx); errors.Is(err, ha.ErrUnauthorized) {
+	fmt.Println("token is invalid or expired")
+}
+```
+
+### WebSocket lifecycle notes
+- Open one WS connection and reuse it (`ws.Connect` once, `defer ws.Close()`).
+- Always unsubscribe when done (`defer sub.Unsubscribe(...)`).
+- Auto-reconnect is not built in yet; if connection drops, reconnect in your app loop.
