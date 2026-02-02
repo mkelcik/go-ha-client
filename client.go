@@ -223,7 +223,9 @@ func (c *Client) CreateState(ctx context.Context, entityId string, newState Stat
 		return response, fmt.Errorf("error creating state request body: %w", err)
 	}
 
-	respCode, err := c.do(ctx, http.MethodPost, fmt.Sprintf(epStateEntity, url.PathEscape(entityId)), bytes.NewBuffer(b), func(reader io.Reader) error {
+	respCode, err := c.doWithHeaders(ctx, http.MethodPost, fmt.Sprintf(epStateEntity, url.PathEscape(entityId)), bytes.NewBuffer(b), map[string]string{
+		"Content-Type": "application/json",
+	}, func(reader io.Reader) error {
 		return json.NewDecoder(reader).Decode(&response)
 	})
 
@@ -294,7 +296,9 @@ func (c *Client) RenderTemplate(ctx context.Context, template string) (string, e
 	}
 
 	rendered := ""
-	return rendered, c.doRequest(ctx, http.MethodPost, epTemplate, bytes.NewBuffer(b), func(reader io.Reader) error {
+	return rendered, c.doRequestWithHeaders(ctx, http.MethodPost, epTemplate, bytes.NewBuffer(b), map[string]string{
+		"Content-Type": "application/json",
+	}, func(reader io.Reader) error {
 		tmp, err := io.ReadAll(reader)
 		if err != nil {
 			return err

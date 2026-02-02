@@ -463,6 +463,10 @@ func TestCreateStateSuccess(t *testing.T) {
 			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
 			return
 		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected content-type: %s", ct))
+			return
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
@@ -624,6 +628,10 @@ func TestRenderTemplate(t *testing.T) {
 		}
 		if r.URL.Path != "/api/template" {
 			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected content-type: %s", ct))
 			return
 		}
 		body, err := io.ReadAll(r.Body)
