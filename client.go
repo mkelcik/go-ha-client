@@ -443,8 +443,10 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 
 	if resp.StatusCode == http.StatusBadRequest {
 		br := badRequestResponse{}
-		_ = json.NewDecoder(resp.Body).Decode(&br)
-		return nil, errors.New(br.Message)
+		if err := json.NewDecoder(resp.Body).Decode(&br); err == nil && br.Message != "" {
+			return nil, errors.New(br.Message)
+		}
+		return nil, fmt.Errorf("bad request (%d)", resp.StatusCode)
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
