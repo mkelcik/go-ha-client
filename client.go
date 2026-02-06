@@ -76,10 +76,28 @@ func NewClient(config ClientConfig, client *http.Client) (*Client, error) {
 	if client == nil {
 		return nil, ErrNilHTTPClient
 	}
+	if config.Debug {
+		ensureLogger(&config)
+	}
 	return &Client{
 		config:     config,
 		httpClient: client,
 	}, nil
+}
+
+// Debug enables or disables debug logging for the client.
+func (c *Client) Debug(enabled bool) *Client {
+	c.config.Debug = enabled
+	if enabled {
+		ensureLogger(&c.config)
+	}
+	return c
+}
+
+// SetLogger sets the debug logger for the client.
+func (c *Client) SetLogger(logger Logger) *Client {
+	c.config.Logger = logger
+	return c
 }
 
 // Ping checks if the API is reachable.
@@ -407,6 +425,12 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 }
 
 func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string, bodyDecoder func(reader io.Reader) error) (*int, error) {
+	var reqBody []byte
+	if c.config.Debug && body != nil {
+		reqBody, _ = io.ReadAll(body)
+		body = bytes.NewReader(reqBody)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("%s%s", c.config.Host, endpoint), body)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request `[%s] %s : %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
@@ -417,7 +441,11 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 	}
 
 	if c.config.Debug && c.config.Logger != nil {
-		c.config.Logger.Debugf("[HA Client] [%s] `%s`\n", req.Method, req.URL.String())
+		if len(reqBody) > 0 {
+			c.config.Logger.Debugf("[HA Client] [%s] `%s` request: %s", req.Method, req.URL.String(), truncateForLog(reqBody))
+		} else {
+			c.config.Logger.Debugf("[HA Client] [%s] `%s` request", req.Method, req.URL.String())
+		}
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -425,6 +453,13 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 		return nil, fmt.Errorf("error in request `[%s] %s`: %w", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
 	}
 	defer resp.Body.Close()
+
+	var respBody []byte
+	if c.config.Debug && c.config.Logger != nil {
+		respBody, _ = io.ReadAll(resp.Body)
+		c.config.Logger.Debugf("[HA Client] [%s] `%s` response (%d): %s", req.Method, req.URL.String(), resp.StatusCode, truncateForLog(respBody))
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+	}
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -443,22 +478,19 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 	}
 
 	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		body := respBody
+		if body == nil {
+			body, _ = io.ReadAll(io.LimitReader(resp.Body, 1024))
+		} else if len(body) > 1024 {
+			body = body[:1024]
+		}
 		if len(body) > 0 {
 			return nil, fmt.Errorf("wrong response code `%d`: %s", resp.StatusCode, string(body))
 		}
 		return nil, fmt.Errorf("wrong response code `%d`", resp.StatusCode)
 	}
 
-	var reader io.Reader
-	reader = resp.Body
-
-	// for debug purpose
-	if c.config.Debug && c.config.Logger != nil {
-		body, _ := io.ReadAll(resp.Body)
-		reader = bytes.NewBuffer(body)
-		c.config.Logger.Debugf("[HA Client] [%s] `%s` response: %s \n", req.Method, req.URL.String(), string(body))
-	}
+	reader := resp.Body
 	if err := bodyDecoder(reader); err != nil {
 		return nil, fmt.Errorf("error decoding response body `[%s] %s: %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
 	}

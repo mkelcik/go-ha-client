@@ -127,10 +127,28 @@ type WSClient struct {
 
 // NewWSClient creates a new WebSocket client.
 func NewWSClient(config ClientConfig) *WSClient {
+	if config.Debug {
+		ensureLogger(&config)
+	}
 	return &WSClient{
 		config: config,
 		dialer: websocket.DefaultDialer,
 	}
+}
+
+// Debug enables or disables debug logging for the WebSocket client.
+func (c *WSClient) Debug(enabled bool) *WSClient {
+	c.config.Debug = enabled
+	if enabled {
+		ensureLogger(&c.config)
+	}
+	return c
+}
+
+// SetLogger sets the debug logger for the WebSocket client.
+func (c *WSClient) SetLogger(logger Logger) *WSClient {
+	c.config.Logger = logger
+	return c
 }
 
 func (c *Client) WS() *WSClient {
@@ -461,6 +479,10 @@ func (c *WSClient) readLoop(conn *websocket.Conn) {
 			return
 		}
 
+		if c.config.Debug && c.config.Logger != nil {
+			c.config.Logger.Debugf("[HA WS] recv: %s", formatWSLogPayload(msg))
+		}
+
 		switch msg.Type {
 		case "result", "pong":
 			c.dispatchPending(msg)
@@ -623,6 +645,9 @@ func (c *WSClient) writeJSON(v interface{}) error {
 	c.mu.RUnlock()
 	if conn == nil {
 		return ErrWSNotConnected
+	}
+	if c.config.Debug && c.config.Logger != nil {
+		c.config.Logger.Debugf("[HA WS] send: %s", formatWSLogPayload(v))
 	}
 	return conn.WriteJSON(v)
 }

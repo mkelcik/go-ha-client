@@ -74,6 +74,19 @@ func main() {
 }
 ```
 
+### Debug logging
+Enable debug logs for REST and WebSocket requests/responses:
+```go
+client, err := ha.NewClient(ha.ClientConfig{Token: token, Host: "http://ha.home"}, &http.Client{
+	Timeout: 30 * time.Second,
+})
+if err != nil {
+	panic(err)
+}
+client.Debug(true)
+```
+When enabled, request/response bodies are logged (tokens are redacted for WS auth).
+
 ### Examples
 
 To turn light with entity id `light.light_1` on, we can use `NewTurnLightOnCmd` helper, to create command and call service.

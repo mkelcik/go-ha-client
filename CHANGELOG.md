@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+- Debug logging for REST and WebSocket requests/responses.
+
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.
 
