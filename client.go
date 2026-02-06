@@ -45,6 +45,7 @@ const (
 var (
 	ErrNotFound        = errors.New("not found")
 	ErrUnauthorized    = errors.New("unauthorized")
+	ErrNilHTTPClient   = errors.New("http client must not be nil")
 	ErrEmptyEntityID   = errors.New("entityId must not be empty")
 	ErrEmptyCalendarID = errors.New("calendarId must not be empty")
 	ErrEmptyTemplate   = errors.New("empty template")
@@ -74,11 +75,14 @@ type Client struct {
 }
 
 // NewClient creates a new Client.
-func NewClient(config ClientConfig, client *http.Client) *Client {
+func NewClient(config ClientConfig, client *http.Client) (*Client, error) {
+	if client == nil {
+		return nil, ErrNilHTTPClient
+	}
 	return &Client{
 		config:     config,
 		httpClient: client,
-	}
+	}, nil
 }
 
 // Ping checks if the API is reachable.

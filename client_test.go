@@ -16,11 +16,16 @@ import (
 	"time"
 )
 
-func newTestClient(serverURL string) *Client {
-	return NewClient(ClientConfig{
+func newTestClient(t *testing.T, serverURL string) *Client {
+	t.Helper()
+	client, err := NewClient(ClientConfig{
 		Token: "test-token",
 		Host:  serverURL,
 	}, &http.Client{})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	return client
 }
 
 func reportHandlerErr(errCh chan error, err error) {
@@ -59,11 +64,20 @@ func TestPing(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	if err := client.Ping(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertNoHandlerErr(t, errCh)
+}
+
+func TestNewClientNilHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewClient(ClientConfig{Token: "token", Host: "http://example.com"}, nil)
+	if !errors.Is(err, ErrNilHTTPClient) {
+		t.Fatalf("expected ErrNilHTTPClient, got: %v", err)
+	}
 }
 
 func TestGetConfig(t *testing.T) {
@@ -98,7 +112,7 @@ func TestGetConfig(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	cfg, err := client.GetConfig(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -131,7 +145,7 @@ func TestGetDiscoverInfo(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	info, err := client.GetDiscoverInfo(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -161,7 +175,7 @@ func TestGetEvents(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	events, err := client.GetEvents(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -199,7 +213,7 @@ func TestGetServicesWithMap(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	services, err := client.GetServices(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -231,7 +245,7 @@ func TestGetServicesWithList(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	services, err := client.GetServices(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -264,7 +278,7 @@ func TestGetStates(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	states, err := client.GetStates(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -295,7 +309,7 @@ func TestGetStateForEntity(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	state, err := client.GetStateForEntity(context.Background(), "light.kitchen")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -326,7 +340,7 @@ func TestGetStateForEntityEscapesEntityID(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	state, err := client.GetStateForEntity(context.Background(), "light.kitchen/1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -373,7 +387,7 @@ func TestGetLogbook(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	records, err := client.GetLogbook(context.Background(), &LogbookFilter{
 		StartTime: start,
 		EndTime:   end,
@@ -405,7 +419,7 @@ func TestGetPlainErrorLog(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	log, err := client.GetPlainErrorLog(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -439,7 +453,7 @@ func TestGetCameraJpeg(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	got, err := client.GetCameraJpeg(context.Background(), "camera.kitchen")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -483,7 +497,7 @@ func TestCreateStateSuccess(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	resp, err := client.CreateState(context.Background(), "sensor.test", State{State: "on"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -497,7 +511,7 @@ func TestCreateStateSuccess(t *testing.T) {
 func TestCreateStateEmptyEntityID(t *testing.T) {
 	t.Parallel()
 
-	client := newTestClient("http://localhost")
+	client := newTestClient(t, "http://localhost")
 	_, err := client.CreateState(context.Background(), "", State{State: "on"})
 	if !errors.Is(err, ErrEmptyEntityID) {
 		t.Fatalf("expected ErrEmptyEntityID, got: %v", err)
@@ -536,7 +550,7 @@ func TestCallService(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	states, err := client.CallService(context.Background(), NewTurnLightOnCmd("light.kitchen"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -566,7 +580,7 @@ func TestCallServiceEscapesDomainAndService(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	_, err := client.CallService(context.Background(), DefaultServiceCmd{
 		Domain:   "light/special",
 		Service:  "turn on",
@@ -606,7 +620,7 @@ func TestCallServiceWithResponse(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	resp, err := client.CallServiceWithResponse(context.Background(), "light", "turn_on", strings.NewReader(`{"entity_id":"light.kitchen"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -647,7 +661,7 @@ func TestRenderTemplate(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	rendered, err := client.RenderTemplate(context.Background(), "{{ states('sensor.test') }}")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -677,7 +691,7 @@ func TestTriggerConfigCheck(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	result, err := client.TriggerConfigCheck(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -705,7 +719,7 @@ func TestGetStateChangesHistoryNilFilter(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	_, err := client.GetStateChangesHistory(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -737,7 +751,7 @@ func TestFireEventWithTimeSendsBody(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	at := time.Date(2021, 1, 2, 3, 4, 5, 0, time.UTC)
 	ok, err := client.FireEvent(context.Background(), "sunrise", &at)
 	if err != nil {
@@ -755,7 +769,7 @@ func TestFireEventWithTimeSendsBody(t *testing.T) {
 func TestFireEventEmptyEventType(t *testing.T) {
 	t.Parallel()
 
-	client := newTestClient("http://localhost")
+	client := newTestClient(t, "http://localhost")
 	ok, err := client.FireEvent(context.Background(), "", nil)
 	if ok {
 		t.Fatalf("expected ok=false")
@@ -773,7 +787,7 @@ func TestCreateStatePropagatesError(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	_, err := client.CreateState(context.Background(), "sensor.test", State{State: "on"})
 	if err == nil {
 		t.Fatalf("expected error")
@@ -797,7 +811,7 @@ func TestGetComponents(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	components, err := client.GetComponents(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -825,7 +839,7 @@ func TestDeleteState(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	if err := client.DeleteState(context.Background(), "sensor.test"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -851,7 +865,7 @@ func TestGetCalendars(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	calendars, err := client.GetCalendars(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -896,7 +910,7 @@ func TestGetCalendarEvents(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	events, err := client.GetCalendarEvents(context.Background(), "calendar.home", start, end)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -941,7 +955,7 @@ func TestGetCalendarEventsEscapesCalendarId(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	events, err := client.GetCalendarEvents(context.Background(), "calendar.home/1", start, end)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -986,7 +1000,7 @@ func TestHandleIntent(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	resp, err := client.HandleIntent(context.Background(), IntentRequest{
 		Name: "TurnOn",
 		Data: map[string]interface{}{"entity": "light.kitchen"},
@@ -1039,7 +1053,7 @@ func TestGetWeatherForecasts(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	forecasts, err := client.GetWeatherForecasts(context.Background(), "weather.home", "daily")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1091,7 +1105,7 @@ func TestProcessConversation(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	resp, err := client.ProcessConversation(context.Background(), ConversationProcessRequest{
 		Text:     "Turn on kitchen lights",
 		Language: "en",
@@ -1116,11 +1130,14 @@ func (e errorRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
 func TestDoRequestWrapsRoundTripError(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient(ClientConfig{Token: "token", Host: "http://example.com"}, &http.Client{
+	client, err := NewClient(ClientConfig{Token: "token", Host: "http://example.com"}, &http.Client{
 		Transport: errorRoundTripper{err: errors.New("network down")},
 	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
 
-	_, err := client.GetConfig(context.Background())
+	_, err = client.GetConfig(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "network down") {
 		t.Fatalf("expected wrapped error, got: %v", err)
 	}
@@ -1135,7 +1152,7 @@ func TestBadRequestFallbackError(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	if err := client.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "bad request") {
 		t.Fatalf("expected bad request error, got: %v", err)
 	}
@@ -1149,7 +1166,7 @@ func TestUnauthorizedError(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	if err := client.Ping(context.Background()); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized, got: %v", err)
 	}
@@ -1163,7 +1180,7 @@ func TestNotFoundError(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	if err := client.Ping(context.Background()); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got: %v", err)
 	}
@@ -1178,7 +1195,7 @@ func TestGenericHttpErrorIncludesResponseBody(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	err := client.Ping(context.Background())
 	if err == nil {
 		t.Fatalf("expected error")
@@ -1198,7 +1215,7 @@ func TestGenericHttpErrorTruncatesLongResponseBody(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := newTestClient(server.URL)
+	client := newTestClient(t, server.URL)
 	err := client.Ping(context.Background())
 	if err == nil {
 		t.Fatalf("expected error")

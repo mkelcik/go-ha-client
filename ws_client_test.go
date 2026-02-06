@@ -12,6 +12,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+func newTestWSClient(t *testing.T, serverURL, token string) *WSClient {
+	t.Helper()
+	client, err := NewClient(ClientConfig{Host: serverURL, Token: token}, &http.Client{})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	return client.WS()
+}
+
 func TestWSConnectAndPing(t *testing.T) {
 	t.Parallel()
 
@@ -53,8 +62,7 @@ func TestWSConnectAndPing(t *testing.T) {
 	})
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
-	ws := client.WS()
+	ws := newTestWSClient(t, srv.URL, "test-token")
 	if err := ws.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -106,8 +114,7 @@ func TestWSSubscribeEvents(t *testing.T) {
 	})
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
-	ws := client.WS()
+	ws := newTestWSClient(t, srv.URL, "test-token")
 	if err := ws.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -169,8 +176,7 @@ func TestWSSubscribeEventsUsesResultID(t *testing.T) {
 	})
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
-	ws := client.WS()
+	ws := newTestWSClient(t, srv.URL, "test-token")
 	if err := ws.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -252,8 +258,7 @@ func TestWSSubscribeCancelUnsubscribes(t *testing.T) {
 	})
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
-	ws := client.WS()
+	ws := newTestWSClient(t, srv.URL, "test-token")
 	if err := ws.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -302,8 +307,7 @@ func TestWSAuthInvalid(t *testing.T) {
 	})
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{Host: srv.URL, Token: "bad-token"}, &http.Client{})
-	ws := client.WS()
+	ws := newTestWSClient(t, srv.URL, "bad-token")
 	err := ws.Connect(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "invalid token") {
 		t.Fatalf("expected auth error, got: %v", err)
@@ -341,8 +345,7 @@ func TestWSGetStates(t *testing.T) {
 	})
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
-	ws := client.WS()
+	ws := newTestWSClient(t, srv.URL, "test-token")
 	if err := ws.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -405,8 +408,7 @@ func TestWSCallServiceWithResponse(t *testing.T) {
 	})
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
-	ws := client.WS()
+	ws := newTestWSClient(t, srv.URL, "test-token")
 	if err := ws.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -466,8 +468,7 @@ func TestWSDoReturnsWSError(t *testing.T) {
 	})
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
-	ws := client.WS()
+	ws := newTestWSClient(t, srv.URL, "test-token")
 	if err := ws.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}

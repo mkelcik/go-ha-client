@@ -45,9 +45,12 @@ import (
 )
 
 func main() {
-	client := ha.NewClient(ha.ClientConfig{Token: "mytoken", Host: "http://my-ha.home"}, &http.Client{
+	client, err := ha.NewClient(ha.ClientConfig{Token: "mytoken", Host: "http://my-ha.home"}, &http.Client{
 		Timeout: 30 * time.Second,
 	})
+	if err != nil {
+		panic(err)
+	}
     
 	// ping instance
 	if err := client.Ping(context.Background()); err != nil {
