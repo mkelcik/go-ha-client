@@ -98,7 +98,7 @@ func TestWSSubscribeEvents(t *testing.T) {
 			"id":      subReq["id"],
 			"type":    "result",
 			"success": true,
-			"result":  subReq["id"],
+			"result":  nil,
 		})
 		_ = conn.WriteJSON(map[string]interface{}{
 			"id":   subReq["id"],

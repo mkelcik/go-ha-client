@@ -1,6 +1,7 @@
 package go_ha_client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -404,7 +405,7 @@ func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*
 		c.mu.Lock()
 		delete(c.pendingSubs, id)
 		c.mu.Unlock()
-		go c.unsubscribeIfCreated(respCh)
+		go c.unsubscribeIfCreated(respCh, id)
 		return nil, ctx.Err()
 	case res := <-respCh:
 		if res.err != nil {
@@ -512,7 +513,7 @@ func (c *WSClient) dispatchPending(msg wsIncomingMessage) {
 		return
 	}
 	if sub != nil && msg.Type == "result" && msg.Success {
-		subscriptionID, err := parseWSSubscriptionID(msg.Result)
+		subscriptionID, err := subscriptionIDFromResult(msg.Result, msg.ID)
 		if err != nil {
 			resultErr = err
 		} else {
@@ -652,7 +653,7 @@ func (c *WSClient) writeJSON(v interface{}) error {
 	return conn.WriteJSON(v)
 }
 
-func (c *WSClient) unsubscribeIfCreated(respCh <-chan wsPendingResult) {
+func (c *WSClient) unsubscribeIfCreated(respCh <-chan wsPendingResult, fallbackID int64) {
 	res, ok := <-respCh
 	if !ok || res.err != nil {
 		return
@@ -660,7 +661,7 @@ func (c *WSClient) unsubscribeIfCreated(respCh <-chan wsPendingResult) {
 	if res.msg.Type != "result" || !res.msg.Success {
 		return
 	}
-	subscriptionID, err := parseWSSubscriptionID(res.msg.Result)
+	subscriptionID, err := subscriptionIDFromResult(res.msg.Result, fallbackID)
 	if err != nil {
 		return
 	}
@@ -695,9 +696,13 @@ func websocketURL(host string) (string, error) {
 	return u.String(), nil
 }
 
-func parseWSSubscriptionID(result json.RawMessage) (int64, error) {
+func subscriptionIDFromResult(result json.RawMessage, fallbackID int64) (int64, error) {
+	trimmed := bytes.TrimSpace(result)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return fallbackID, nil
+	}
 	var id int64
-	if err := json.Unmarshal(result, &id); err != nil {
+	if err := json.Unmarshal(trimmed, &id); err != nil {
 		return 0, fmt.Errorf("invalid subscription id: %w", err)
 	}
 	return id, nil
