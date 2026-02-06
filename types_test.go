@@ -31,7 +31,7 @@ func TestCreateQueryStringWithParams(t *testing.T) {
 	filter := &StateChangesFilter{
 		StartTime:              start,
 		EndTime:                end,
-		FilterEntityId:         "light.kitchen",
+		FilterEntityID:         "light.kitchen",
 		MinimalResponse:        true,
 		NoAttributes:           true,
 		SignificantChangesOnly: true,

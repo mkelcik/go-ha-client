@@ -352,7 +352,7 @@ func TestWSGetStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get states: %v", err)
 	}
-	if len(states) != 1 || states[0].EntityId != "light.kitchen" {
+	if len(states) != 1 || states[0].EntityID != "light.kitchen" {
 		t.Fatalf("unexpected states: %#v", states)
 	}
 	assertNoHandlerErr(t, errCh)

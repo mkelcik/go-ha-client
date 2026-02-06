@@ -63,7 +63,7 @@ type Config struct {
 
 // DiscoveryInfo represents the discovery information.
 type DiscoveryInfo struct {
-	BaseUrl             string `json:"base_url"`
+	BaseURL             string `json:"base_url"`
 	LocationName        string `json:"location_name"`
 	RequiresApiPassword bool   `json:"requires_api_password"`
 	Version             string `json:"version"`
@@ -91,22 +91,23 @@ type ServiceDomain struct {
 type ServiceMap map[string]Service
 
 func (m *ServiceMap) UnmarshalJSON(b []byte) error {
-	if len(b) == 0 || string(b) == "null" {
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
 		*m = nil
 		return nil
 	}
 
-	switch b[0] {
+	switch trimmed[0] {
 	case '{':
 		var services map[string]Service
-		if err := json.Unmarshal(b, &services); err != nil {
+		if err := json.Unmarshal(trimmed, &services); err != nil {
 			return err
 		}
 		*m = services
 		return nil
 	case '[':
 		var list []string
-		if err := json.Unmarshal(b, &list); err != nil {
+		if err := json.Unmarshal(trimmed, &list); err != nil {
 			return err
 		}
 		services := make(map[string]Service, len(list))
@@ -116,7 +117,7 @@ func (m *ServiceMap) UnmarshalJSON(b []byte) error {
 		*m = services
 		return nil
 	default:
-		return fmt.Errorf("unexpected services JSON: %s", string(b))
+		return fmt.Errorf("unexpected services JSON: %s", string(trimmed))
 	}
 }
 
@@ -144,7 +145,7 @@ type ServiceField struct {
 type StateChangesFilter struct {
 	StartTime              time.Time
 	EndTime                time.Time `json:"end_time"`
-	FilterEntityId         string    `json:"filter_entity_id"`
+	FilterEntityID         string    `json:"filter_entity_id"`
 	MinimalResponse        bool      `json:"minimal_response"`
 	NoAttributes           bool      `json:"no_attributes"`
 	SignificantChangesOnly bool      `json:"significant_changes_only"`
@@ -159,7 +160,7 @@ type StateChanges [][]EntityChange
 
 // EntityChange represents a change in an entity's state.
 type EntityChange struct {
-	EntityId    string                 `json:"entity_id"`
+	EntityID    string                 `json:"entity_id"`
 	State       string                 `json:"state"`
 	Attributes  map[string]interface{} `json:"attributes"`
 	LastChanged time.Time              `json:"last_changed"`
@@ -190,8 +191,8 @@ type LogbookRecord struct {
 	Name          string    `json:"name"`
 	Message       string    `json:"message"`
 	Domain        string    `json:"domain"`
-	EntityId      string    `json:"entity_id"`
-	ContextUserId *string   `json:"context_user_id"`
+	EntityID      string    `json:"entity_id"`
+	ContextUserID *string   `json:"context_user_id"`
 	State         string    `json:"state"`
 	Icon          string    `json:"icon"`
 }
@@ -200,7 +201,7 @@ type LogbookRecord struct {
 type LogbookFilter struct {
 	StartTime time.Time
 	EndTime   time.Time `json:"end_time"`
-	EntityId  string    `json:"entity"`
+	EntityID  string    `json:"entity"`
 }
 
 func (f *LogbookFilter) String() string {
@@ -216,7 +217,7 @@ type Calendars []Calendar
 // Calendar represents a calendar entity.
 type Calendar struct {
 	Name     string `json:"name"`
-	EntityId string `json:"entity_id"`
+	EntityID string `json:"entity_id"`
 }
 
 // CalendarEvents is a list of calendar events.
@@ -241,15 +242,15 @@ type CalendarEventTime struct {
 
 // StateEntity represents the state of an entity.
 type StateEntity struct {
-	EntityId    string                 `json:"entity_id"`
+	EntityID    string                 `json:"entity_id"`
 	State       string                 `json:"state"`
 	Attributes  map[string]interface{} `json:"attributes"`
 	LastChanged time.Time              `json:"last_changed"`
 	LastUpdated time.Time              `json:"last_updated"`
 	Context     struct {
 		Id       string `json:"id"`
-		ParentId string `json:"parent_id"`
-		UserId   string `json:"user_id"`
+		ParentID string `json:"parent_id"`
+		UserID   string `json:"user_id"`
 	} `json:"context"`
 }
 
@@ -261,7 +262,7 @@ func NewTurnLightOnCmd(entityId string) DefaultServiceCmd {
 	return DefaultServiceCmd{
 		Service:  ServiceTurnOn,
 		Domain:   DomainLight,
-		EntityId: entityId,
+		EntityID: entityId,
 	}
 }
 
@@ -270,16 +271,16 @@ func NewTurnLightOffCmd(entityId string) DefaultServiceCmd {
 	return DefaultServiceCmd{
 		Service:  ServiceTurnOff,
 		Domain:   DomainLight,
-		EntityId: entityId,
+		EntityID: entityId,
 	}
 }
 
-// NewToggleLightTCmd is helper for turning light off
-func NewToggleLightTCmd(entityId string) DefaultServiceCmd {
+// NewToggleLightCmd is helper for toggling light state.
+func NewToggleLightCmd(entityId string) DefaultServiceCmd {
 	return DefaultServiceCmd{
 		Service:  ServiceToggle,
 		Domain:   DomainLight,
-		EntityId: entityId,
+		EntityID: entityId,
 	}
 }
 
@@ -294,7 +295,7 @@ func NewServiceDataEntityID(entityID string) map[string]interface{} {
 type DefaultServiceCmd struct {
 	Service  string `json:"-"`
 	Domain   string `json:"-"`
-	EntityId string `json:"entity_id"`
+	EntityID string `json:"entity_id"`
 }
 
 type newEventRising struct {
@@ -326,14 +327,14 @@ type IntentResponse struct {
 type ConversationProcessRequest struct {
 	Text           string `json:"text"`
 	Language       string `json:"language,omitempty"`
-	AgentId        string `json:"agent_id,omitempty"`
-	ConversationId string `json:"conversation_id,omitempty"`
+	AgentID        string `json:"agent_id,omitempty"`
+	ConversationID string `json:"conversation_id,omitempty"`
 }
 
 // ConversationProcessResponse represents the response from conversation processing.
 type ConversationProcessResponse struct {
 	ContinueConversation bool                 `json:"continue_conversation,omitempty"`
-	ConversationId       string               `json:"conversation_id,omitempty"`
+	ConversationID       string               `json:"conversation_id,omitempty"`
 	Response             ConversationResponse `json:"response"`
 }
 
@@ -354,7 +355,7 @@ type ServiceCallResponse struct {
 
 // WeatherForecastRequest represents a request for weather forecast.
 type WeatherForecastRequest struct {
-	EntityId string `json:"entity_id"`
+	EntityID string `json:"entity_id"`
 	Type     string `json:"type,omitempty"`
 }
 
@@ -370,7 +371,7 @@ type WeatherForecast map[string]interface{}
 type StateResponse struct {
 	State
 	CreateCode  int       `json:"-"`
-	EntityId    string    `json:"entity_id"`
+	EntityID    string    `json:"entity_id"`
 	LastChanged time.Time `json:"last_changed"`
 	LastUpdated time.Time `json:"last_updated"`
 }

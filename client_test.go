@@ -123,7 +123,7 @@ func TestGetDiscoverInfo(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(DiscoveryInfo{
-			BaseUrl:             "http://localhost:8123",
+			BaseURL:             "http://localhost:8123",
 			LocationName:        "Home",
 			RequiresApiPassword: false,
 			Version:             "2025.1.0",
@@ -136,7 +136,7 @@ func TestGetDiscoverInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.BaseUrl == "" || info.Version == "" {
+	if info.BaseURL == "" || info.Version == "" {
 		t.Fatalf("unexpected discovery info: %#v", info)
 	}
 	assertNoHandlerErr(t, errCh)
@@ -259,7 +259,7 @@ func TestGetStates(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(StateEntities{
-			{EntityId: "light.kitchen", State: "on"},
+			{EntityID: "light.kitchen", State: "on"},
 		})
 	}))
 	t.Cleanup(server.Close)
@@ -269,7 +269,7 @@ func TestGetStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(states) != 1 || states[0].EntityId != "light.kitchen" {
+	if len(states) != 1 || states[0].EntityID != "light.kitchen" {
 		t.Fatalf("unexpected states: %#v", states)
 	}
 	assertNoHandlerErr(t, errCh)
@@ -289,7 +289,7 @@ func TestGetStateForEntity(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(StateEntity{
-			EntityId: "light.kitchen",
+			EntityID: "light.kitchen",
 			State:    "on",
 		})
 	}))
@@ -300,13 +300,13 @@ func TestGetStateForEntity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if state.EntityId != "light.kitchen" || state.State != "on" {
+	if state.EntityID != "light.kitchen" || state.State != "on" {
 		t.Fatalf("unexpected state: %#v", state)
 	}
 	assertNoHandlerErr(t, errCh)
 }
 
-func TestGetStateForEntityEscapesEntityId(t *testing.T) {
+func TestGetStateForEntityEscapesEntityID(t *testing.T) {
 	t.Parallel()
 
 	errCh := make(chan error, 1)
@@ -320,7 +320,7 @@ func TestGetStateForEntityEscapesEntityId(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(StateEntity{
-			EntityId: "light.kitchen/1",
+			EntityID: "light.kitchen/1",
 			State:    "on",
 		})
 	}))
@@ -331,7 +331,7 @@ func TestGetStateForEntityEscapesEntityId(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if state.EntityId != "light.kitchen/1" || state.State != "on" {
+	if state.EntityID != "light.kitchen/1" || state.State != "on" {
 		t.Fatalf("unexpected state: %#v", state)
 	}
 	assertNoHandlerErr(t, errCh)
@@ -367,7 +367,7 @@ func TestGetLogbook(t *testing.T) {
 				Name:     "Kitchen",
 				Message:  "turned on",
 				Domain:   "light",
-				EntityId: "light.kitchen",
+				EntityID: "light.kitchen",
 			},
 		})
 	}))
@@ -377,12 +377,12 @@ func TestGetLogbook(t *testing.T) {
 	records, err := client.GetLogbook(context.Background(), &LogbookFilter{
 		StartTime: start,
 		EndTime:   end,
-		EntityId:  "light.kitchen",
+		EntityID:  "light.kitchen",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(records) != 1 || records[0].EntityId != "light.kitchen" {
+	if len(records) != 1 || records[0].EntityID != "light.kitchen" {
 		t.Fatalf("unexpected logbook: %#v", records)
 	}
 	assertNoHandlerErr(t, errCh)
@@ -494,7 +494,7 @@ func TestCreateStateSuccess(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
-func TestCreateStateEmptyEntityId(t *testing.T) {
+func TestCreateStateEmptyEntityID(t *testing.T) {
 	t.Parallel()
 
 	client := newTestClient("http://localhost")
@@ -531,7 +531,7 @@ func TestCallService(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(StateEntities{
-			{EntityId: "light.kitchen", State: "on"},
+			{EntityID: "light.kitchen", State: "on"},
 		})
 	}))
 	t.Cleanup(server.Close)
@@ -541,7 +541,7 @@ func TestCallService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(states) != 1 || states[0].EntityId != "light.kitchen" {
+	if len(states) != 1 || states[0].EntityID != "light.kitchen" {
 		t.Fatalf("unexpected states: %#v", states)
 	}
 	assertNoHandlerErr(t, errCh)
@@ -561,7 +561,7 @@ func TestCallServiceEscapesDomainAndService(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(StateEntities{
-			{EntityId: "light.kitchen", State: "on"},
+			{EntityID: "light.kitchen", State: "on"},
 		})
 	}))
 	t.Cleanup(server.Close)
@@ -570,7 +570,7 @@ func TestCallServiceEscapesDomainAndService(t *testing.T) {
 	_, err := client.CallService(context.Background(), DefaultServiceCmd{
 		Domain:   "light/special",
 		Service:  "turn on",
-		EntityId: "light.kitchen",
+		EntityID: "light.kitchen",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -597,7 +597,7 @@ func TestCallServiceWithResponse(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(ServiceCallResponse{
 			ChangedStates: StateEntities{
-				{EntityId: "light.kitchen", State: "on"},
+				{EntityID: "light.kitchen", State: "on"},
 			},
 			ServiceResponse: map[string]json.RawMessage{
 				"light.kitchen": json.RawMessage(`{"success":true}`),
@@ -846,7 +846,7 @@ func TestGetCalendars(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(Calendars{
-			{Name: "Home", EntityId: "calendar.home"},
+			{Name: "Home", EntityID: "calendar.home"},
 		})
 	}))
 	t.Cleanup(server.Close)
@@ -856,7 +856,7 @@ func TestGetCalendars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(calendars) != 1 || calendars[0].EntityId != "calendar.home" {
+	if len(calendars) != 1 || calendars[0].EntityID != "calendar.home" {
 		t.Fatalf("unexpected calendars: %#v", calendars)
 	}
 	assertNoHandlerErr(t, errCh)
@@ -1077,7 +1077,7 @@ func TestProcessConversation(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(ConversationProcessResponse{
 			ContinueConversation: false,
-			ConversationId:       "conv-1",
+			ConversationID:       "conv-1",
 			Response: ConversationResponse{
 				ResponseType: "action_done",
 				Language:     "en",

@@ -198,12 +198,12 @@ func (c *Client) GetPlainErrorLog(ctx context.Context) (PlainText, error) {
 }
 
 // GetCameraJpeg retrieves a camera image.
-func (c *Client) GetCameraJpeg(ctx context.Context, cameraEntityId string) (image.Image, error) {
-	if cameraEntityId == "" {
+func (c *Client) GetCameraJpeg(ctx context.Context, cameraEntityID string) (image.Image, error) {
+	if cameraEntityID == "" {
 		return nil, ErrEmptyEntityID
 	}
 	var img image.Image
-	return img, c.doRequest(ctx, http.MethodGet, fmt.Sprintf(epCameraProxy, url.PathEscape(cameraEntityId)), nil, func(reader io.Reader) error {
+	return img, c.doRequest(ctx, http.MethodGet, fmt.Sprintf(epCameraProxy, url.PathEscape(cameraEntityID)), nil, func(reader io.Reader) error {
 		var err error
 		img, err = jpeg.Decode(reader)
 		if err != nil {
@@ -351,7 +351,7 @@ func (c *Client) GetWeatherForecasts(ctx context.Context, entityId, forecastType
 	}
 
 	b, err := json.Marshal(WeatherForecastRequest{
-		EntityId: entityId,
+		EntityID: entityId,
 		Type:     forecastType,
 	})
 	if err != nil {
@@ -480,7 +480,7 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 		c.config.Logger.Debugf("[HA Client] [%s] `%s` response: %s \n", req.Method, req.URL.String(), string(body))
 	}
 	if err := bodyDecoder(reader); err != nil {
-		return nil, fmt.Errorf("error decoding request body `[%s] %s: %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
+		return nil, fmt.Errorf("error decoding response body `[%s] %s: %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
 	}
 	return &resp.StatusCode, nil
 }

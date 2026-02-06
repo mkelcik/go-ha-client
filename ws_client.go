@@ -16,14 +16,19 @@ import (
 )
 
 var (
-	ErrWSNotConnected   = errors.New("ws client is not connected")
-	ErrWSClosed         = errors.New("ws connection closed")
-	ErrWSAuthFailed     = errors.New("ws authentication failed")
+	// ErrWSNotConnected indicates the WebSocket client is not connected.
+	ErrWSNotConnected = errors.New("ws client is not connected")
+	// ErrWSClosed indicates the WebSocket connection was closed.
+	ErrWSClosed = errors.New("ws connection closed")
+	// ErrWSAuthFailed indicates authentication failed.
+	ErrWSAuthFailed = errors.New("ws authentication failed")
+	// ErrWSInvalidRequest indicates a request is missing a required type.
 	ErrWSInvalidRequest = errors.New("ws request must include non-empty type")
 )
 
 const wsUnsubscribeTimeout = 5 * time.Second
 
+// WSError represents an error returned by the WebSocket API.
 type WSError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -42,6 +47,7 @@ func (e *WSError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
+// WSEvent represents an event received from a subscription.
 type WSEvent struct {
 	SubscriptionID int64
 	EventType      string
@@ -49,6 +55,7 @@ type WSEvent struct {
 	Raw            json.RawMessage
 }
 
+// WSSubscription represents an active event subscription.
 type WSSubscription struct {
 	id     int64
 	events chan WSEvent
@@ -57,6 +64,7 @@ type WSSubscription struct {
 	once   sync.Once
 }
 
+// WSCallServiceResult represents a response to a call_service request.
 type WSCallServiceResult struct {
 	Context struct {
 		ID       string `json:"id"`
@@ -102,6 +110,7 @@ type wsPendingResult struct {
 	err error
 }
 
+// WSClient is a client for the Home Assistant WebSocket API.
 type WSClient struct {
 	config ClientConfig
 	dialer *websocket.Dialer
@@ -116,6 +125,7 @@ type WSClient struct {
 	nextID  int64
 }
 
+// NewWSClient creates a new WebSocket client.
 func NewWSClient(config ClientConfig) *WSClient {
 	return &WSClient{
 		config: config,

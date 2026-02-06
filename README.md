@@ -84,7 +84,7 @@ or turn `switch.switch_1` off without helper
 if _, err := client.CallService(context.Background(), ha.DefaultServiceCmd{
     Service:  ha.ServiceTurnOff,
     Domain:   ha.DomainSwitch, 
-    EntityId: "switch.switch_1",
+    EntityID: "switch.switch_1",
 }); err != nil {
 	panic(err)
 }
