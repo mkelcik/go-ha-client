@@ -90,7 +90,7 @@ func TestWSSubscribeEvents(t *testing.T) {
 			"id":      subReq["id"],
 			"type":    "result",
 			"success": true,
-			"result":  nil,
+			"result":  subReq["id"],
 		})
 		_ = conn.WriteJSON(map[string]interface{}{
 			"id":   subReq["id"],
@@ -128,6 +128,161 @@ func TestWSSubscribeEvents(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("timeout waiting for ws event")
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSSubscribeEventsUsesResultID(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	const subscriptionID int64 = 42
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		subReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&subReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":      subReq["id"],
+			"type":    "result",
+			"success": true,
+			"result":  subscriptionID,
+		})
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":   subscriptionID,
+			"type": "event",
+			"event": map[string]interface{}{
+				"event_type": "state_changed",
+				"data": map[string]interface{}{
+					"entity_id": "light.kitchen",
+					"new_state": map[string]interface{}{"state": "on"},
+				},
+			},
+		})
+	})
+	defer srv.Close()
+
+	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
+	ws := client.WS()
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	sub, err := ws.SubscribeEvents(context.Background(), "state_changed")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if sub.ID() != subscriptionID {
+		t.Fatalf("unexpected subscription id: %d", sub.ID())
+	}
+
+	select {
+	case ev := <-sub.Events():
+		if ev.EventType != "state_changed" {
+			t.Fatalf("unexpected event type: %s", ev.EventType)
+		}
+		if !strings.Contains(string(ev.Data), `"entity_id":"light.kitchen"`) {
+			t.Fatalf("unexpected event data: %s", string(ev.Data))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for ws event")
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSSubscribeCancelUnsubscribes(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	ready := make(chan struct{})
+	sendResult := make(chan struct{})
+	unsubscribed := make(chan struct{})
+	const subscriptionID int64 = 99
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		subReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&subReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		close(ready)
+
+		<-sendResult
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":      subReq["id"],
+			"type":    "result",
+			"success": true,
+			"result":  subscriptionID,
+		})
+
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		unsubReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&unsubReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		if unsubReq["type"] != "unsubscribe_events" {
+			reportHandlerErr(errCh, errors.New("expected unsubscribe_events"))
+			return
+		}
+		if unsubReq["subscription"] != float64(subscriptionID) {
+			reportHandlerErr(errCh, errors.New("unexpected subscription id"))
+			return
+		}
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":      unsubReq["id"],
+			"type":    "result",
+			"success": true,
+			"result":  true,
+		})
+		close(unsubscribed)
+	})
+	defer srv.Close()
+
+	client := NewClient(ClientConfig{Host: srv.URL, Token: "test-token"}, &http.Client{})
+	ws := client.WS()
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	resultErr := make(chan error, 1)
+	go func() {
+		_, err := ws.SubscribeEvents(ctx, "state_changed")
+		resultErr <- err
+	}()
+
+	<-ready
+	cancel()
+	close(sendResult)
+
+	select {
+	case err := <-resultErr:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context canceled, got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for subscribe cancel")
+	}
+
+	select {
+	case <-unsubscribed:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for unsubscribe")
 	}
 	assertNoHandlerErr(t, errCh)
 }

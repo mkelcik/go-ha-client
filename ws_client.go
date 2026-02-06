@@ -22,6 +22,8 @@ var (
 	ErrWSInvalidRequest = errors.New("ws request must include non-empty type")
 )
 
+const wsUnsubscribeTimeout = 5 * time.Second
+
 type WSError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -104,10 +106,11 @@ type WSClient struct {
 	config ClientConfig
 	dialer *websocket.Dialer
 
-	mu      sync.RWMutex
-	conn    *websocket.Conn
-	pending map[int64]chan wsPendingResult
-	subs    map[int64]*WSSubscription
+	mu          sync.RWMutex
+	conn        *websocket.Conn
+	pending     map[int64]chan wsPendingResult
+	pendingSubs map[int64]*WSSubscription
+	subs        map[int64]*WSSubscription
 
 	writeMu sync.Mutex
 	nextID  int64
@@ -177,6 +180,7 @@ func (c *WSClient) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	c.conn = conn
 	c.pending = make(map[int64]chan wsPendingResult)
+	c.pendingSubs = make(map[int64]*WSSubscription)
 	c.subs = make(map[int64]*WSSubscription)
 	c.nextID = 0
 	c.mu.Unlock()
@@ -356,27 +360,29 @@ func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*
 		return nil, ErrWSNotConnected
 	}
 	c.pending[id] = respCh
-	c.subs[id] = sub
+	c.pendingSubs[id] = sub
 	c.mu.Unlock()
 
 	if err := c.writeJSON(payload); err != nil {
 		c.cleanupPending(id)
-		c.cleanupSubscription(id, false, nil)
+		c.mu.Lock()
+		delete(c.pendingSubs, id)
+		c.mu.Unlock()
 		return nil, err
 	}
 
 	select {
 	case <-ctx.Done():
-		c.cleanupPending(id)
-		c.cleanupSubscription(id, false, nil)
+		c.mu.Lock()
+		delete(c.pendingSubs, id)
+		c.mu.Unlock()
+		go c.unsubscribeIfCreated(respCh)
 		return nil, ctx.Err()
 	case res := <-respCh:
 		if res.err != nil {
-			c.cleanupSubscription(id, false, nil)
 			return nil, res.err
 		}
 		if res.msg.Type != "result" || !res.msg.Success {
-			c.cleanupSubscription(id, false, nil)
 			if res.msg.Error != nil {
 				return nil, res.msg.Error
 			}
@@ -455,17 +461,36 @@ func (c *WSClient) readLoop(conn *websocket.Conn) {
 }
 
 func (c *WSClient) dispatchPending(msg wsIncomingMessage) {
+	var (
+		sub       *WSSubscription
+		resultErr error
+	)
 	c.mu.Lock()
 	ch, ok := c.pending[msg.ID]
 	if ok {
 		delete(c.pending, msg.ID)
+	}
+	sub = c.pendingSubs[msg.ID]
+	if sub != nil {
+		delete(c.pendingSubs, msg.ID)
 	}
 	c.mu.Unlock()
 
 	if !ok {
 		return
 	}
-	ch <- wsPendingResult{msg: msg}
+	if sub != nil && msg.Type == "result" && msg.Success {
+		subscriptionID, err := parseWSSubscriptionID(msg.Result)
+		if err != nil {
+			resultErr = err
+		} else {
+			sub.id = subscriptionID
+			c.mu.Lock()
+			c.subs[subscriptionID] = sub
+			c.mu.Unlock()
+		}
+	}
+	ch <- wsPendingResult{msg: msg, err: resultErr}
 	close(ch)
 }
 
@@ -539,6 +564,8 @@ func (c *WSClient) failAll(err error) {
 	c.conn = nil
 	pending := c.pending
 	c.pending = make(map[int64]chan wsPendingResult)
+	pendingSubs := c.pendingSubs
+	c.pendingSubs = make(map[int64]*WSSubscription)
 	subs := c.subs
 	c.subs = make(map[int64]*WSSubscription)
 	c.mu.Unlock()
@@ -550,6 +577,18 @@ func (c *WSClient) failAll(err error) {
 	for _, ch := range pending {
 		ch <- wsPendingResult{err: err}
 		close(ch)
+	}
+	for _, sub := range pendingSubs {
+		if err != nil {
+			select {
+			case sub.errors <- err:
+			default:
+			}
+		}
+		sub.once.Do(func() {
+			close(sub.events)
+			close(sub.errors)
+		})
 	}
 	for _, sub := range subs {
 		if err != nil {
@@ -578,6 +617,23 @@ func (c *WSClient) writeJSON(v interface{}) error {
 	return conn.WriteJSON(v)
 }
 
+func (c *WSClient) unsubscribeIfCreated(respCh <-chan wsPendingResult) {
+	res, ok := <-respCh
+	if !ok || res.err != nil {
+		return
+	}
+	if res.msg.Type != "result" || !res.msg.Success {
+		return
+	}
+	subscriptionID, err := parseWSSubscriptionID(res.msg.Result)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), wsUnsubscribeTimeout)
+	defer cancel()
+	_ = c.unsubscribe(ctx, subscriptionID)
+}
+
 func websocketURL(host string) (string, error) {
 	if host == "" {
 		return "", errors.New("host must not be empty")
@@ -602,6 +658,14 @@ func websocketURL(host string) (string, error) {
 	u.RawQuery = ""
 	u.Fragment = ""
 	return u.String(), nil
+}
+
+func parseWSSubscriptionID(result json.RawMessage) (int64, error) {
+	var id int64
+	if err := json.Unmarshal(result, &id); err != nil {
+		return 0, fmt.Errorf("invalid subscription id: %w", err)
+	}
+	return id, nil
 }
 
 func cloneWSRequest(req map[string]interface{}) map[string]interface{} {

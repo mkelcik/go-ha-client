@@ -10,7 +10,7 @@ https://developers.home-assistant.io/docs/api/websocket
 Tested with home-assistant `core-2021.7.2`.
 
 ### Requirements
-- Go `1.24.12+`
+- Go `1.24.13+`
 - Home Assistant with long-lived access token
 
 ### Project docs
