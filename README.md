@@ -174,6 +174,10 @@ fmt.Println(forecast.Forecast)
 
 ### WebSocket examples
 
+Notes:
+- Call `ws.Connect(...)` once at application startup and reuse the same client.
+- Avoid calling `Connect` concurrently from multiple goroutines.
+
 Connect and subscribe to state changes
 ```go
 ws := client.WS()

@@ -124,6 +124,7 @@ func (c *Client) WS() *WSClient {
 	return NewWSClient(c.config)
 }
 
+// Connect establishes the WebSocket connection; call it once and avoid concurrent calls.
 func (c *WSClient) Connect(ctx context.Context) error {
 	c.mu.RLock()
 	if c.conn != nil {
