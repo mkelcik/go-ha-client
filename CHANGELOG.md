@@ -6,6 +6,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Removed
+- Removed `GetDiscoverInfo` and conversation process API support to match REST docs.
+
 ### Fixed
 - Return `ErrNilHTTPClient` when `NewClient` is called with a nil HTTP client.
 

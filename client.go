@@ -23,7 +23,6 @@ const (
 	epPing                = "/api/"
 	epConfig              = "/api/config"
 	epComponents          = "/api/components"
-	epDiscoveryInfo       = "/api/discovery_info"
 	epEvents              = "/api/events"
 	epServices            = "/api/services"
 	epHistoryStateChanges = "/api/history/period"
@@ -37,7 +36,6 @@ const (
 	epFireEvent           = "/api/events/%s"
 	epTemplate            = "/api/template"
 	epIntentHandle        = "/api/intent/handle"
-	epConversationProcess = "/api/conversation/process"
 	epConfigurationCheck  = "/api/config/core/check_config"
 )
 
@@ -52,7 +50,6 @@ var (
 	ErrEmptyService    = errors.New("empty service name")
 	ErrEmptyDomain     = errors.New("empty domain name")
 	ErrEmptyEventType  = errors.New("eventType must not be empty")
-	ErrEmptyText       = errors.New("empty text")
 	ErrEmptyIntentName = errors.New("empty intent name")
 )
 
@@ -100,12 +97,6 @@ func (c *Client) GetConfig(ctx context.Context) (Config, error) {
 func (c *Client) GetComponents(ctx context.Context) ([]string, error) {
 	components := []string{}
 	return components, c.doGetRequestJson(ctx, epComponents, &components)
-}
-
-// GetDiscoverInfo retrieves discovery information.
-func (c *Client) GetDiscoverInfo(ctx context.Context) (DiscoveryInfo, error) {
-	discoverInfo := DiscoveryInfo{}
-	return discoverInfo, c.doGetRequestJson(ctx, epDiscoveryInfo, &discoverInfo)
 }
 
 // GetEvents retrieves the list of events.
@@ -330,21 +321,6 @@ func (c *Client) HandleIntent(ctx context.Context, req IntentRequest) (IntentRes
 	}
 
 	return response, c.doPostRequestJson(ctx, epIntentHandle, bytes.NewBuffer(b), &response)
-}
-
-// ProcessConversation processes a conversation.
-func (c *Client) ProcessConversation(ctx context.Context, req ConversationProcessRequest) (ConversationProcessResponse, error) {
-	response := ConversationProcessResponse{}
-	if req.Text == "" {
-		return response, ErrEmptyText
-	}
-
-	b, err := json.Marshal(req)
-	if err != nil {
-		return response, fmt.Errorf("error creating conversation request: %w", err)
-	}
-
-	return response, c.doPostRequestJson(ctx, epConversationProcess, bytes.NewBuffer(b), &response)
 }
 
 // GetWeatherForecasts retrieves weather forecasts.

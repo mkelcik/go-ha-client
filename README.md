@@ -13,6 +13,12 @@ Tested with home-assistant `core-2021.7.2`.
 - Go `1.24.13+`
 - Home Assistant with long-lived access token
 
+### Get a Home Assistant token
+1. Open Home Assistant in the browser.
+2. Click your user profile (bottom-left).
+3. Scroll to **Long-Lived Access Tokens**.
+4. Click **Create Token**, give it a name, and copy the value.
+
 ### Project docs
 - [Contributing guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
@@ -60,11 +66,11 @@ func main() {
 	}
 
 	// example of home-assistant instance info
-	discoverInfo, err := client.GetDiscoverInfo(context.Background())
+	cfg, err := client.GetConfig(context.Background())
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%+v", discoverInfo)
+	fmt.Printf("%+v", cfg)
 }
 ```
 
@@ -152,18 +158,6 @@ if err != nil {
 	panic(err)
 }
 fmt.Println(resp.Response)
-```
-
-Conversation process
-```go
-conv, err := client.ProcessConversation(context.Background(), ha.ConversationProcessRequest{
-	Text:     "Turn on kitchen lights",
-	Language: "en",
-})
-if err != nil {
-	panic(err)
-}
-fmt.Println(conv.Response)
 ```
 
 Weather forecasts

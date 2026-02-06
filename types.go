@@ -61,14 +61,6 @@ type Config struct {
 	AllowlistExternalDirs []string `json:"allowlist_external_dirs"`
 }
 
-// DiscoveryInfo represents the discovery information.
-type DiscoveryInfo struct {
-	BaseURL             string `json:"base_url"`
-	LocationName        string `json:"location_name"`
-	RequiresApiPassword bool   `json:"requires_api_password"`
-	Version             string `json:"version"`
-}
-
 // Events is a list of events.
 type Events []Event
 
@@ -321,29 +313,6 @@ type IntentRequest struct {
 // IntentResponse represents the response from intent handling.
 type IntentResponse struct {
 	Response map[string]interface{} `json:"response"`
-}
-
-// ConversationProcessRequest represents a request to process conversation text.
-type ConversationProcessRequest struct {
-	Text           string `json:"text"`
-	Language       string `json:"language,omitempty"`
-	AgentID        string `json:"agent_id,omitempty"`
-	ConversationID string `json:"conversation_id,omitempty"`
-}
-
-// ConversationProcessResponse represents the response from conversation processing.
-type ConversationProcessResponse struct {
-	ContinueConversation bool                 `json:"continue_conversation,omitempty"`
-	ConversationID       string               `json:"conversation_id,omitempty"`
-	Response             ConversationResponse `json:"response"`
-}
-
-// ConversationResponse represents the inner response data of a conversation.
-type ConversationResponse struct {
-	ResponseType string                 `json:"response_type,omitempty"`
-	Language     string                 `json:"language,omitempty"`
-	Data         map[string]interface{} `json:"data,omitempty"`
-	Speech       map[string]interface{} `json:"speech,omitempty"`
 }
 
 // ServiceCallResponse represents the response from a service call when return_response is requested.

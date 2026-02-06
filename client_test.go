@@ -123,39 +123,6 @@ func TestGetConfig(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
-func TestGetDiscoverInfo(t *testing.T) {
-	t.Parallel()
-
-	errCh := make(chan error, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
-			return
-		}
-		if r.URL.Path != "/api/discovery_info" {
-			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
-			return
-		}
-		_ = json.NewEncoder(w).Encode(DiscoveryInfo{
-			BaseURL:             "http://localhost:8123",
-			LocationName:        "Home",
-			RequiresApiPassword: false,
-			Version:             "2025.1.0",
-		})
-	}))
-	t.Cleanup(server.Close)
-
-	client := newTestClient(t, server.URL)
-	info, err := client.GetDiscoverInfo(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if info.BaseURL == "" || info.Version == "" {
-		t.Fatalf("unexpected discovery info: %#v", info)
-	}
-	assertNoHandlerErr(t, errCh)
-}
-
 func TestGetEvents(t *testing.T) {
 	t.Parallel()
 
@@ -1063,58 +1030,6 @@ func TestGetWeatherForecasts(t *testing.T) {
 	}
 	if forecasts.Forecast[0]["condition"] != "sunny" {
 		t.Fatalf("unexpected forecast content: %#v", forecasts.Forecast[0])
-	}
-	assertNoHandlerErr(t, errCh)
-}
-
-func TestProcessConversation(t *testing.T) {
-	t.Parallel()
-
-	errCh := make(chan error, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
-			return
-		}
-		if r.URL.Path != "/api/conversation/process" {
-			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
-			return
-		}
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
-			return
-		}
-		if !strings.Contains(string(body), `"text":"Turn on kitchen lights"`) {
-			reportHandlerErr(errCh, fmt.Errorf("unexpected body: %s", string(body)))
-			return
-		}
-		_ = json.NewEncoder(w).Encode(ConversationProcessResponse{
-			ContinueConversation: false,
-			ConversationID:       "conv-1",
-			Response: ConversationResponse{
-				ResponseType: "action_done",
-				Language:     "en",
-				Speech: map[string]interface{}{
-					"plain": map[string]interface{}{
-						"speech": "Done",
-					},
-				},
-			},
-		})
-	}))
-	t.Cleanup(server.Close)
-
-	client := newTestClient(t, server.URL)
-	resp, err := client.ProcessConversation(context.Background(), ConversationProcessRequest{
-		Text:     "Turn on kitchen lights",
-		Language: "en",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Response.ResponseType != "action_done" {
-		t.Fatalf("unexpected response: %#v", resp.Response)
 	}
 	assertNoHandlerErr(t, errCh)
 }
