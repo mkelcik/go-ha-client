@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 )
 
 type stateChangedData struct {
@@ -97,7 +98,7 @@ func DecodeEventData[T any](event WSEvent) (T, error) {
 
 func filterSubscriptionByEntity(sub *WSSubscription, entityID string) *WSSubscription {
 	filtered := &WSSubscription{
-		id:     sub.id,
+		id:     atomic.LoadInt64(&sub.id),
 		events: make(chan WSEvent, 32),
 		errors: make(chan error, 1),
 		client: sub.client,

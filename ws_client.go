@@ -79,7 +79,7 @@ type WSCallServiceResult struct {
 }
 
 func (s *WSSubscription) ID() int64 {
-	return s.id
+	return atomic.LoadInt64(&s.id)
 }
 
 // Events returns a channel of subscription events.
@@ -94,7 +94,7 @@ func (s *WSSubscription) Errors() <-chan error {
 }
 
 func (s *WSSubscription) Unsubscribe(ctx context.Context) error {
-	return s.client.unsubscribe(ctx, s.id)
+	return s.client.unsubscribe(ctx, s.ID())
 }
 
 type wsIncomingMessage struct {
@@ -654,7 +654,7 @@ func (c *WSClient) dispatchPending(msg wsIncomingMessage) {
 		if err != nil {
 			resultErr = err
 		} else {
-			sub.id = subscriptionID
+			atomic.StoreInt64(&sub.id, subscriptionID)
 			c.mu.Lock()
 			c.subs[subscriptionID] = sub
 			c.mu.Unlock()
@@ -974,7 +974,7 @@ func (c *WSClient) restoreSubscriptions() {
 		c.subs[newSub.id] = subReq.sub
 
 		// Update ID on the old sub object
-		subReq.sub.id = newSub.id
+		atomic.StoreInt64(&subReq.sub.id, newSub.id)
 		c.mu.Unlock()
 
 		// Helper to forward events from newSub to oldSub (handling race condition where events arrive before swap)
