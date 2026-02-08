@@ -18,10 +18,7 @@ import (
 
 func newTestClient(t *testing.T, serverURL string) *Client {
 	t.Helper()
-	client, err := NewClient(ClientConfig{
-		Token: "test-token",
-		Host:  serverURL,
-	}, &http.Client{})
+	client, err := NewClient(serverURL, WithToken("test-token"))
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -71,12 +68,12 @@ func TestPing(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
-func TestNewClientNilHTTPClient(t *testing.T) {
+func TestNewClientInvalidURL(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewClient(ClientConfig{Token: "token", Host: "http://example.com"}, nil)
-	if !errors.Is(err, ErrNilHTTPClient) {
-		t.Fatalf("expected ErrNilHTTPClient, got: %v", err)
+	_, err := NewClient(":", WithToken("token"))
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }
 
@@ -1045,9 +1042,9 @@ func (e errorRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
 func TestDoRequestWrapsRoundTripError(t *testing.T) {
 	t.Parallel()
 
-	client, err := NewClient(ClientConfig{Token: "token", Host: "http://example.com"}, &http.Client{
+	client, err := NewClient("http://example.com", WithToken("token"), WithHTTPClient(&http.Client{
 		Transport: errorRoundTripper{err: errors.New("network down")},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}

@@ -14,7 +14,7 @@ import (
 
 func newTestWSClient(t *testing.T, serverURL, token string) *WSClient {
 	t.Helper()
-	client, err := NewClient(ClientConfig{Host: serverURL, Token: token}, &http.Client{})
+	client, err := NewClient(serverURL, WithToken(token), WithHTTPClient(&http.Client{}))
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}

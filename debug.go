@@ -3,28 +3,9 @@ package go_ha_client
 import (
 	"encoding/json"
 	"fmt"
-	"log"
-	"os"
 )
 
 const debugBodyLimit = 2048
-
-type stdLogger struct {
-	logger *log.Logger
-}
-
-func (l *stdLogger) Debugf(format string, args ...interface{}) {
-	l.logger.Printf(format, args...)
-}
-
-func ensureLogger(config *ClientConfig) {
-	if config.Logger != nil {
-		return
-	}
-	config.Logger = &stdLogger{
-		logger: log.New(os.Stdout, "", log.LstdFlags),
-	}
-}
 
 func truncateForLog(body []byte) string {
 	if len(body) <= debugBodyLimit {

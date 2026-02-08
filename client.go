@@ -9,15 +9,12 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 )
-
-// Logger is interface for logging request and response details.
-type Logger interface {
-	Debugf(format string, args ...interface{})
-}
 
 const (
 	epPing                = "/api/"
@@ -39,11 +36,16 @@ const (
 	epConfigurationCheck  = "/api/config/core/check_config"
 )
 
+const (
+	headerContentType   = "Content-Type"
+	headerAuthorization = "Authorization"
+	mimeTypeJSON        = "application/json"
+)
+
 // Common errors returned by the client.
 var (
 	ErrNotFound        = errors.New("not found")
 	ErrUnauthorized    = errors.New("unauthorized")
-	ErrNilHTTPClient   = errors.New("http client must not be nil")
 	ErrEmptyEntityID   = errors.New("entityId must not be empty")
 	ErrEmptyCalendarID = errors.New("calendarId must not be empty")
 	ErrEmptyTemplate   = errors.New("empty template")
@@ -59,10 +61,10 @@ type badRequestResponse struct {
 
 // ClientConfig holds configuration for the Client.
 type ClientConfig struct {
-	Debug  bool
-	Token  string
-	Host   string
-	Logger Logger
+	Token      string
+	Host       string
+	Logger     *slog.Logger
+	HTTPClient *http.Client
 }
 
 // Client is a client for Home Assistant REST API.
@@ -71,33 +73,61 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// Option is a function that configures the Client.
+type Option func(*ClientConfig)
+
+// WithToken sets the access token for the client.
+func WithToken(token string) Option {
+	return func(c *ClientConfig) {
+		c.Token = token
+	}
+}
+
+// WithLogger sets the logger for the client.
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *ClientConfig) {
+		c.Logger = logger
+	}
+}
+
+// WithHTTPClient sets the HTTP client to use.
+func WithHTTPClient(client *http.Client) Option {
+	return func(c *ClientConfig) {
+		c.HTTPClient = client
+	}
+}
+
+// WithDebug enables debug logging (using default text handler to stderr with debug level).
+func WithDebug() Option {
+	return func(c *ClientConfig) {
+		c.Logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+}
+
 // NewClient creates a new Client.
-func NewClient(config ClientConfig, client *http.Client) (*Client, error) {
-	if client == nil {
-		return nil, ErrNilHTTPClient
+func NewClient(host string, opts ...Option) (*Client, error) {
+	if _, err := url.ParseRequestURI(host); err != nil {
+		return nil, fmt.Errorf("invalid host url: %w", err)
 	}
-	if config.Debug {
-		ensureLogger(&config)
+
+	config := ClientConfig{
+		Host:   host,
+		Logger: slog.Default(),
 	}
+
+	for _, opt := range opts {
+		opt(&config)
+	}
+
+	httpClient := config.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
 	return &Client{
 		config:     config,
-		httpClient: client,
+		httpClient: httpClient,
 	}, nil
-}
-
-// Debug enables or disables debug logging for the client.
-func (c *Client) Debug(enabled bool) *Client {
-	c.config.Debug = enabled
-	if enabled {
-		ensureLogger(&c.config)
-	}
-	return c
-}
-
-// SetLogger sets the debug logger for the client.
-func (c *Client) SetLogger(logger Logger) *Client {
-	c.config.Logger = logger
-	return c
 }
 
 // Ping checks if the API is reachable.
@@ -238,7 +268,7 @@ func (c *Client) CreateState(ctx context.Context, entityId string, newState Stat
 	}
 
 	respCode, err := c.doWithHeaders(ctx, http.MethodPost, fmt.Sprintf(epStateEntity, url.PathEscape(entityId)), bytes.NewBuffer(b), map[string]string{
-		"Content-Type": "application/json",
+		headerContentType: mimeTypeJSON,
 	}, func(reader io.Reader) error {
 		return json.NewDecoder(reader).Decode(&response)
 	})
@@ -315,7 +345,7 @@ func (c *Client) RenderTemplate(ctx context.Context, template string) (string, e
 
 	rendered := ""
 	return rendered, c.doRequestWithHeaders(ctx, http.MethodPost, epTemplate, bytes.NewBuffer(b), map[string]string{
-		"Content-Type": "application/json",
+		headerContentType: mimeTypeJSON,
 	}, func(reader io.Reader) error {
 		tmp, err := io.ReadAll(reader)
 		if err != nil {
@@ -393,7 +423,7 @@ func (c *Client) doGetRequestJson(ctx context.Context, endpoint string, response
 
 func (c *Client) doPostRequestJson(ctx context.Context, endpoint string, body io.Reader, responseEntity interface{}) error {
 	return c.doRequestWithHeaders(ctx, http.MethodPost, endpoint, body, map[string]string{
-		"Content-Type": "application/json",
+		headerContentType: mimeTypeJSON,
 	}, func(reader io.Reader) error {
 		if responseEntity == nil {
 			return nil
@@ -426,7 +456,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 
 func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string, bodyDecoder func(reader io.Reader) error) (*int, error) {
 	var reqBody []byte
-	if c.config.Debug && body != nil {
+	if c.config.Logger != nil && body != nil {
 		reqBody, _ = io.ReadAll(body)
 		body = bytes.NewReader(reqBody)
 	}
@@ -435,16 +465,16 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 	if err != nil {
 		return nil, fmt.Errorf("error creating request `[%s] %s : %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.config.Token))
+	req.Header.Add(headerAuthorization, fmt.Sprintf("Bearer %s", c.config.Token))
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
 
-	if c.config.Debug && c.config.Logger != nil {
+	if c.config.Logger != nil {
 		if len(reqBody) > 0 {
-			c.config.Logger.Debugf("[HA Client] [%s] `%s` request: %s", req.Method, req.URL.String(), truncateForLog(reqBody))
+			c.config.Logger.Debug("request", "method", req.Method, "url", req.URL.String(), "body", truncateForLog(reqBody))
 		} else {
-			c.config.Logger.Debugf("[HA Client] [%s] `%s` request", req.Method, req.URL.String())
+			c.config.Logger.Debug("request", "method", req.Method, "url", req.URL.String())
 		}
 	}
 
@@ -455,9 +485,9 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 	defer resp.Body.Close()
 
 	var respBody []byte
-	if c.config.Debug && c.config.Logger != nil {
+	if c.config.Logger != nil {
 		respBody, _ = io.ReadAll(resp.Body)
-		c.config.Logger.Debugf("[HA Client] [%s] `%s` response (%d): %s", req.Method, req.URL.String(), resp.StatusCode, truncateForLog(respBody))
+		c.config.Logger.Debug("response", "method", req.Method, "url", req.URL.String(), "status", resp.StatusCode, "body", truncateForLog(respBody))
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 	}
 

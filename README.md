@@ -1,6 +1,5 @@
 # go-ha-client
 Go client for Home Assistant REST API.
-
 This client targets the official REST API documentation:
 https://developers.home-assistant.io/docs/api/rest
 
@@ -51,9 +50,12 @@ import (
 )
 
 func main() {
-	client, err := ha.NewClient(ha.ClientConfig{Token: "mytoken", Host: "http://my-ha.home"}, &http.Client{
-		Timeout: 30 * time.Second,
-	})
+	client, err := ha.NewClient("http://my-ha.home", 
+		ha.WithToken("mytoken"),
+		ha.WithHTTPClient(&http.Client{
+			Timeout: 30 * time.Second,
+		}),
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -77,13 +79,16 @@ func main() {
 ### Debug logging
 Enable debug logs for REST and WebSocket requests/responses:
 ```go
-client, err := ha.NewClient(ha.ClientConfig{Token: token, Host: "http://ha.home"}, &http.Client{
-	Timeout: 30 * time.Second,
-})
-if err != nil {
-	panic(err)
-}
-client.Debug(true)
+	client, err := ha.NewClient("http://ha.home",
+		ha.WithToken("token"),
+		ha.WithDebug(),
+		ha.WithHTTPClient(&http.Client{
+			Timeout: 30 * time.Second,
+		}),
+	)
+	if err != nil {
+		panic(err)
+	}
 ```
 When enabled, request/response bodies are logged (tokens are redacted for WS auth).
 
