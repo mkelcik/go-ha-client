@@ -3,12 +3,13 @@ package go_ha_client
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand/v2"
+	"math/big"
 	"net/url"
 	"strings"
 	"sync"
@@ -81,10 +82,13 @@ func (s *WSSubscription) ID() int64 {
 	return s.id
 }
 
+// Events returns a channel of subscription events.
 func (s *WSSubscription) Events() <-chan WSEvent {
 	return s.events
 }
 
+// Errors returns a channel of subscription errors.
+// During auto-reconnect, errors from the temporary subscription may be forwarded.
 func (s *WSSubscription) Errors() <-chan error {
 	return s.errors
 }
@@ -788,13 +792,34 @@ func (c *WSClient) writeJSON(v interface{}) error {
 
 // calculateBackoff returns the backoff duration for the given attempt.
 func (c *WSClient) calculateBackoff(attempt int) time.Duration {
-	backoff := c.reconnect.MinBackoff * time.Duration(1<<uint(attempt))
+	if attempt < 0 {
+		attempt = 0
+	}
+	backoff := c.reconnect.MinBackoff
+	for i := 0; i < attempt; i++ {
+		if backoff >= c.reconnect.MaxBackoff/2 {
+			backoff = c.reconnect.MaxBackoff
+			break
+		}
+		backoff *= 2
+	}
 	if backoff > c.reconnect.MaxBackoff {
 		backoff = c.reconnect.MaxBackoff
 	}
 	// Add jitter (±25%)
-	jitter := time.Duration(rand.Int64N(int64(backoff)/2)) - backoff/4
+	jitter := time.Duration(cryptoInt63n(int64(backoff)/2)) - backoff/4
 	return backoff + jitter
+}
+
+func cryptoInt63n(n int64) int64 {
+	if n <= 0 {
+		return 0
+	}
+	v, err := rand.Int(rand.Reader, big.NewInt(n))
+	if err != nil {
+		return 0
+	}
+	return v.Int64()
 }
 
 // reconnectLoop attempts to reconnect with exponential backoff.

@@ -284,3 +284,4 @@ if err := client.Ping(ctx); errors.Is(err, ha.ErrUnauthorized) {
 - Open one WS connection and reuse it (`ws.Connect` once, `defer ws.Close()`).
 - Always unsubscribe when done (`defer sub.Unsubscribe(...)`).
 - Auto-reconnect is opt-in (disabled by default).
+- During auto-reconnect, subscriptions are restored and buffered errors may be forwarded (buffers can still drop when full).
