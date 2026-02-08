@@ -187,26 +187,52 @@ if err != nil {
 fmt.Println(forecast.Forecast)
 ```
 
-### WebSocket examples
+### WebSocket Client
+The client includes a WebSocket helper for real-time events.
 
-Notes:
-- Call `ws.Connect(...)` once at application startup and reuse the same client.
-- Avoid calling `Connect` concurrently from multiple goroutines.
-
-Connect and subscribe to state changes
+#### Basic Usage
 ```go
-ws := client.WS()
+// Create WebSocket client from REST client
+ws := client.WS(
+	ha.WithAutoReconnect(true), // Enable auto-reconnect
+	ha.WithOnReconnect(func() {
+		log.Println("Reconnected to Home Assistant")
+	}),
+)
+
 if err := ws.Connect(context.Background()); err != nil {
 	panic(err)
 }
 defer ws.Close()
 
-sub, err := ws.SubscribeEvents(context.Background(), ha.EventTypeStateChanged)
+// Subscribe to events
+sub, err := ws.SubscribeEvents(context.Background(), "state_changed")
 if err != nil {
 	panic(err)
 }
-defer sub.Unsubscribe(context.Background())
 
+// Automatically restores subscription after reconnect!
+for event := range sub.Events() {
+	fmt.Printf("Event: %s\n", event.EventType)
+}
+```
+
+#### Auto-Reconnect Configuration
+The WebSocket client supports automatic reconnection with exponential backoff.
+```go
+ws := client.WS(
+	ha.WithAutoReconnect(true),
+	ha.WithMaxRetries(10),           // Unlimited if 0
+	ha.WithReconnectBackoff(time.Second, 60*time.Second),
+	ha.WithOnReconnect(func() { ... }),
+	ha.WithOnReconnectError(func(err error) { ... }),
+)
+```
+
+#### Advanced Usage
+
+**Parse events:**
+```go
 type StateChangedEvent struct {
 	EntityID string `json:"entity_id"`
 	NewState struct {
@@ -215,7 +241,7 @@ type StateChangedEvent struct {
 }
 
 for ev := range sub.Events() {
-	if ev.EventType != ha.EventTypeStateChanged {
+	if ev.EventType != "state_changed" {
 		continue
 	}
 	var data StateChangedEvent
@@ -228,48 +254,18 @@ for ev := range sub.Events() {
 }
 ```
 
-Call a service over WebSocket
+**Call a service over WebSocket:**
 ```go
 result, err := ws.CallService(
 	context.Background(),
-	ha.DomainLight,
-	ha.ServiceTurnOn,
-	ha.NewServiceDataEntityID("light.kitchen"),
+	"light",
+	"turn_on",
+	map[string]interface{}{"entity_id": "light.kitchen"},
 )
 if err != nil {
 	panic(err)
 }
 fmt.Println("context id:", result.Context.ID)
-```
-
-Print message when a specific light turns on
-```go
-ws := client.WS()
-if err := ws.Connect(context.Background()); err != nil {
-	panic(err)
-}
-defer ws.Close()
-
-sub, err := ws.SubscribeEvents(context.Background(), ha.EventTypeStateChanged)
-if err != nil {
-	panic(err)
-}
-defer sub.Unsubscribe(context.Background())
-
-for ev := range sub.Events() {
-	var data struct {
-		EntityID string `json:"entity_id"`
-		NewState struct {
-			State string `json:"state"`
-		} `json:"new_state"`
-	}
-	if err := json.Unmarshal(ev.Data, &data); err != nil {
-		continue
-	}
-	if data.EntityID == "light.kitchen" && data.NewState.State == "on" {
-		fmt.Println("light.kitchen is ON")
-	}
-}
 ```
 
 ### Error handling
@@ -287,4 +283,4 @@ if err := client.Ping(ctx); errors.Is(err, ha.ErrUnauthorized) {
 ### WebSocket lifecycle notes
 - Open one WS connection and reuse it (`ws.Connect` once, `defer ws.Close()`).
 - Always unsubscribe when done (`defer sub.Unsubscribe(...)`).
-- Auto-reconnect is not built in yet; if connection drops, reconnect in your app loop.
+- Auto-reconnect is opt-in (disabled by default).

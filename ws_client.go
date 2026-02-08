@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/url"
 	"strings"
 	"sync"
@@ -112,6 +113,22 @@ type wsPendingResult struct {
 	err error
 }
 
+// ReconnectConfig holds auto-reconnect settings.
+type ReconnectConfig struct {
+	Enabled     bool
+	MaxRetries  int           // 0 = unlimited
+	MinBackoff  time.Duration // default 1s
+	MaxBackoff  time.Duration // default 60s
+	OnReconnect func()        // called after successful reconnect
+	OnError     func(error)   // called on each failed reconnect attempt
+}
+
+// subscriptionRequest stores info needed to restore a subscription.
+type subscriptionRequest struct {
+	request map[string]interface{}
+	sub     *WSSubscription
+}
+
 // WSClient is a client for the Home Assistant WebSocket API.
 type WSClient struct {
 	config ClientConfig
@@ -125,14 +142,70 @@ type WSClient struct {
 
 	writeMu sync.Mutex
 	nextID  int64
+
+	// Reconnect state
+	reconnect     ReconnectConfig
+	activeSubs    map[int64]subscriptionRequest
+	reconnecting  atomic.Bool
+	stopReconnect chan struct{}
+	closed        atomic.Bool
 }
 
-// NewWSClient creates a new WebSocket client.
-func NewWSClient(config ClientConfig) *WSClient {
-	return &WSClient{
-		config: config,
-		dialer: websocket.DefaultDialer,
+// WSOption is a function that configures the WSClient.
+type WSOption func(*WSClient)
+
+// WithAutoReconnect enables or disables automatic reconnection.
+func WithAutoReconnect(enabled bool) WSOption {
+	return func(c *WSClient) {
+		c.reconnect.Enabled = enabled
 	}
+}
+
+// WithMaxRetries sets the maximum number of reconnect attempts (0 = unlimited).
+func WithMaxRetries(n int) WSOption {
+	return func(c *WSClient) {
+		c.reconnect.MaxRetries = n
+	}
+}
+
+// WithReconnectBackoff sets the min and max backoff durations.
+func WithReconnectBackoff(min, max time.Duration) WSOption {
+	return func(c *WSClient) {
+		c.reconnect.MinBackoff = min
+		c.reconnect.MaxBackoff = max
+	}
+}
+
+// WithOnReconnect sets a callback that is called after successful reconnect.
+func WithOnReconnect(fn func()) WSOption {
+	return func(c *WSClient) {
+		c.reconnect.OnReconnect = fn
+	}
+}
+
+// WithOnReconnectError sets a callback for failed reconnect attempts.
+func WithOnReconnectError(fn func(error)) WSOption {
+	return func(c *WSClient) {
+		c.reconnect.OnError = fn
+	}
+}
+
+// NewWSClient creates a new WebSocket client with optional configuration.
+func NewWSClient(config ClientConfig, opts ...WSOption) *WSClient {
+	c := &WSClient{
+		config:        config,
+		dialer:        websocket.DefaultDialer,
+		activeSubs:    make(map[int64]subscriptionRequest),
+		stopReconnect: make(chan struct{}),
+		reconnect: ReconnectConfig{
+			MinBackoff: time.Second,
+			MaxBackoff: 60 * time.Second,
+		},
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // SetLogger sets the debug logger for the WebSocket client.
@@ -141,8 +214,9 @@ func (c *WSClient) SetLogger(logger *slog.Logger) *WSClient {
 	return c
 }
 
-func (c *Client) WS() *WSClient {
-	return NewWSClient(c.config)
+// WS creates a new WebSocket client from the REST client configuration.
+func (c *Client) WS(opts ...WSOption) *WSClient {
+	return NewWSClient(c.config, opts...)
 }
 
 // Connect establishes the WebSocket connection; call it once and avoid concurrent calls.
@@ -208,6 +282,19 @@ func (c *WSClient) Connect(ctx context.Context) error {
 }
 
 func (c *WSClient) Close() error {
+	// Mark as closed to prevent reconnect
+	if c.closed.Swap(true) {
+		return nil // already closed
+	}
+
+	// Stop any reconnect loop
+	select {
+	case <-c.stopReconnect:
+		// already closed
+	default:
+		close(c.stopReconnect)
+	}
+
 	c.mu.Lock()
 	conn := c.conn
 	c.conn = nil
@@ -406,11 +493,25 @@ func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*
 			}
 			return nil, errors.New("ws subscribe failed")
 		}
+
+		// Track subscription for auto-reconnect
+		c.mu.Lock()
+		c.activeSubs[sub.id] = subscriptionRequest{
+			request: cloneWSRequest(req),
+			sub:     sub,
+		}
+		c.mu.Unlock()
+
 		return sub, nil
 	}
 }
 
 func (c *WSClient) unsubscribe(ctx context.Context, id int64) error {
+	// Remove from tracking first
+	c.mu.Lock()
+	delete(c.activeSubs, id)
+	c.mu.Unlock()
+
 	err := c.Do(ctx, map[string]interface{}{
 		"type":         "unsubscribe_events",
 		"subscription": id,
@@ -461,6 +562,21 @@ func (c *WSClient) readLoop(conn *websocket.Conn) {
 	for {
 		msg := wsIncomingMessage{}
 		if err := conn.ReadJSON(&msg); err != nil {
+			// Connection lost
+			c.mu.Lock()
+			c.conn = nil
+			c.mu.Unlock()
+
+			if c.closed.Load() {
+				c.failAll(ErrWSClosed)
+				return
+			}
+
+			if c.reconnect.Enabled {
+				go c.reconnectLoop()
+				return
+			}
+
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) || errors.Is(err, io.EOF) {
 				c.failAll(ErrWSClosed)
 				return
@@ -641,6 +757,158 @@ func (c *WSClient) writeJSON(v interface{}) error {
 		c.config.Logger.Debug("send", "payload", formatWSLogPayload(v))
 	}
 	return conn.WriteJSON(v)
+}
+
+// calculateBackoff returns the backoff duration for the given attempt.
+func (c *WSClient) calculateBackoff(attempt int) time.Duration {
+	backoff := c.reconnect.MinBackoff * time.Duration(1<<uint(attempt))
+	if backoff > c.reconnect.MaxBackoff {
+		backoff = c.reconnect.MaxBackoff
+	}
+	// Add jitter (±25%)
+	jitter := time.Duration(rand.Int64N(int64(backoff)/2)) - backoff/4
+	return backoff + jitter
+}
+
+// reconnectLoop attempts to reconnect with exponential backoff.
+func (c *WSClient) reconnectLoop() {
+	if !c.reconnecting.CompareAndSwap(false, true) {
+		return // already reconnecting
+	}
+	defer c.reconnecting.Store(false)
+
+	for attempt := 0; ; attempt++ {
+		if c.closed.Load() {
+			return
+		}
+
+		if c.reconnect.MaxRetries > 0 && attempt >= c.reconnect.MaxRetries {
+			c.failAll(errors.New("max reconnect attempts exceeded"))
+			return
+		}
+
+		backoff := c.calculateBackoff(attempt)
+
+		select {
+		case <-c.stopReconnect:
+			return
+		case <-time.After(backoff):
+		}
+
+		if c.closed.Load() {
+			return
+		}
+
+		// Try to connect
+		if err := c.doConnect(context.Background()); err != nil {
+			if c.reconnect.OnError != nil {
+				c.reconnect.OnError(err)
+			}
+			continue
+		}
+
+		// Success - restore subscriptions
+		c.restoreSubscriptions()
+		if c.reconnect.OnReconnect != nil {
+			c.reconnect.OnReconnect()
+		}
+		return
+	}
+}
+
+// doConnect performs the actual connection without checking existing connection.
+func (c *WSClient) doConnect(ctx context.Context) error {
+	wsURL, err := websocketURL(c.config.Host)
+	if err != nil {
+		return err
+	}
+
+	conn, _, err := c.dialer.DialContext(ctx, wsURL, nil)
+	if err != nil {
+		return err
+	}
+
+	msg := wsIncomingMessage{}
+	if err := conn.ReadJSON(&msg); err != nil {
+		_ = conn.Close()
+		return err
+	}
+	if msg.Type != "auth_required" {
+		_ = conn.Close()
+		return fmt.Errorf("unexpected ws handshake message: %s", msg.Type)
+	}
+
+	if err := conn.WriteJSON(map[string]interface{}{
+		"type":         "auth",
+		"access_token": c.config.Token,
+	}); err != nil {
+		_ = conn.Close()
+		return err
+	}
+
+	msg = wsIncomingMessage{}
+	if err := conn.ReadJSON(&msg); err != nil {
+		_ = conn.Close()
+		return err
+	}
+	if msg.Type != "auth_ok" {
+		_ = conn.Close()
+		if msg.Type == "auth_invalid" {
+			return fmt.Errorf("%w: %s", ErrWSAuthFailed, msg.Message)
+		}
+		return fmt.Errorf("unexpected ws auth message: %s", msg.Type)
+	}
+
+	c.mu.Lock()
+	c.conn = conn
+	c.pending = make(map[int64]chan wsPendingResult)
+	c.pendingSubs = make(map[int64]*WSSubscription)
+	c.subs = make(map[int64]*WSSubscription)
+	c.nextID = 0
+	c.mu.Unlock()
+
+	go c.readLoop(conn)
+	return nil
+}
+
+// restoreSubscriptions re-subscribes all tracked subscriptions after reconnect.
+func (c *WSClient) restoreSubscriptions() {
+	c.mu.RLock()
+	subs := make(map[int64]subscriptionRequest, len(c.activeSubs))
+	for id, req := range c.activeSubs {
+		subs[id] = req
+	}
+	c.mu.RUnlock()
+
+	for oldID, subReq := range subs {
+		// Create new subscription
+		newSub, err := c.subscribe(context.Background(), subReq.request)
+		if err != nil {
+			select {
+			case subReq.sub.errors <- fmt.Errorf("failed to restore subscription: %w", err):
+			default:
+			}
+			continue
+		}
+
+		// map the new ID to the OLD subscription object so the user keeps receiving events
+		c.mu.Lock()
+		// Remove the temporary newSub created by subscribe()
+		delete(c.activeSubs, newSub.id)
+		// Update the activeSubs with new ID but OLD sub object
+		c.activeSubs[newSub.id] = subscriptionRequest{
+			request: subReq.request,
+			sub:     subReq.sub,
+		}
+		delete(c.activeSubs, oldID)
+
+		// Point the main subs map to the OLD sub object
+		c.subs[newSub.id] = subReq.sub
+
+		// Update ID on the old sub object
+		subReq.sub.id = newSub.id
+		c.mu.Unlock()
+	}
 }
 
 func (c *WSClient) unsubscribeIfCreated(respCh <-chan wsPendingResult, fallbackID int64) {
