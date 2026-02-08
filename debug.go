@@ -26,34 +26,48 @@ func redactJSON(body []byte) string {
 		return ""
 	}
 
-	var data map[string]interface{}
+	var data interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		// Not valid JSON, return truncated original
 		return truncateForLog(body)
 	}
 
-	redactMap(data)
-	redacted, err := json.Marshal(data)
+	redacted := redactValue(data)
+	out, err := json.Marshal(redacted)
 	if err != nil {
 		return truncateForLog(body)
 	}
-	return truncateForLog(redacted)
+	return truncateForLog(out)
 }
 
-// redactMap recursively redacts sensitive keys in a map.
-func redactMap(data map[string]interface{}) {
-	for key, value := range data {
-		for _, secret := range secretKeys {
-			if key == secret {
-				data[key] = "<redacted>"
-				break
+func redactValue(value interface{}) interface{} {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		for key, val := range v {
+			if isSecretKey(key) {
+				v[key] = "<redacted>"
+				continue
 			}
+			v[key] = redactValue(val)
 		}
-		// Recursively handle nested maps
-		if nested, ok := value.(map[string]interface{}); ok {
-			redactMap(nested)
+		return v
+	case []interface{}:
+		for i := range v {
+			v[i] = redactValue(v[i])
+		}
+		return v
+	default:
+		return value
+	}
+}
+
+func isSecretKey(key string) bool {
+	for _, secret := range secretKeys {
+		if key == secret {
+			return true
 		}
 	}
+	return false
 }
 
 // redactURL redacts sensitive query parameters from URL.
@@ -83,20 +97,8 @@ func formatWSLogPayload(payload interface{}) string {
 	if payload == nil {
 		return "<nil>"
 	}
-	if m, ok := payload.(map[string]interface{}); ok {
-		logPayload := cloneWSRequest(m)
-		if _, ok := logPayload["access_token"]; ok {
-			logPayload["access_token"] = "<redacted>"
-		}
-		if _, ok := logPayload["token"]; ok {
-			logPayload["token"] = "<redacted>"
-		}
-		if b, err := json.Marshal(logPayload); err == nil {
-			return truncateForLog(b)
-		}
-	}
 	if b, err := json.Marshal(payload); err == nil {
-		return truncateForLog(b)
+		return redactJSON(b)
 	}
 	return fmt.Sprintf("%T", payload)
 }
