@@ -240,7 +240,7 @@ type StateEntity struct {
 	LastChanged time.Time              `json:"last_changed"`
 	LastUpdated time.Time              `json:"last_updated"`
 	Context     struct {
-		Id       string `json:"id"`
+		ID       string `json:"id"`
 		ParentID string `json:"parent_id"`
 		UserID   string `json:"user_id"`
 	} `json:"context"`
