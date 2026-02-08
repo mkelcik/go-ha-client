@@ -567,12 +567,17 @@ func (c *WSClient) readLoop(conn *websocket.Conn) {
 			c.conn = nil
 			c.mu.Unlock()
 
+			// Explicitly close the connection to avoid leaks
+			_ = conn.Close()
+
 			if c.closed.Load() {
 				c.failAll(ErrWSClosed)
 				return
 			}
 
 			if c.reconnect.Enabled {
+				// Fail any pending requests (they won't be valid on new connection)
+				c.failPending(ErrWSClosed)
 				go c.reconnectLoop()
 				return
 			}
@@ -596,6 +601,28 @@ func (c *WSClient) readLoop(conn *websocket.Conn) {
 		case "event":
 			c.dispatchEvent(msg)
 		}
+	}
+}
+
+// failPending cancels all pending requests but leaves subscriptions intact.
+func (c *WSClient) failPending(err error) {
+	c.mu.Lock()
+	pending := c.pending
+	c.pending = make(map[int64]chan wsPendingResult)
+	pendingSubs := c.pendingSubs
+	c.pendingSubs = make(map[int64]*WSSubscription)
+	c.mu.Unlock()
+
+	for _, ch := range pending {
+		ch <- wsPendingResult{err: err}
+		close(ch)
+	}
+	// Also fail in-flight subscription requests
+	for _, sub := range pendingSubs {
+		sub.once.Do(func() {
+			close(sub.events)
+			close(sub.errors)
+		})
 	}
 }
 
@@ -799,8 +826,11 @@ func (c *WSClient) reconnectLoop() {
 			return
 		}
 
-		// Try to connect
-		if err := c.doConnect(context.Background()); err != nil {
+		// Try to connect with timeout
+		connectCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := c.doConnect(connectCtx)
+		cancel()
+		if err != nil {
 			if c.reconnect.OnError != nil {
 				c.reconnect.OnError(err)
 			}
@@ -880,9 +910,13 @@ func (c *WSClient) restoreSubscriptions() {
 	}
 	c.mu.RUnlock()
 
+	// Use a global timeout for restoration to avoid blocking forever
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	for oldID, subReq := range subs {
 		// Create new subscription
-		newSub, err := c.subscribe(context.Background(), subReq.request)
+		newSub, err := c.subscribe(ctx, subReq.request)
 		if err != nil {
 			select {
 			case subReq.sub.errors <- fmt.Errorf("failed to restore subscription: %w", err):

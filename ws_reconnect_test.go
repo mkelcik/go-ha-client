@@ -3,6 +3,7 @@ package go_ha_client
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -140,6 +141,79 @@ func TestWSAutoReconnect(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Errorf("timeout waiting for event after reconnect")
+	}
+
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSFailPendingOnDisconnect(t *testing.T) {
+	t.Parallel()
+
+	disconnect := make(chan struct{})
+	requestReceived := make(chan struct{})
+
+	errCh := make(chan error, 1)
+
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		// Auth flow
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		// Wait for request
+		req := map[string]interface{}{}
+		if err := conn.ReadJSON(&req); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		close(requestReceived)
+
+		// Wait for signal to disconnect WITHOUT sending response
+		<-disconnect
+	})
+	defer srv.Close()
+
+	client, err := NewClient(srv.URL, WithToken("token"))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	ws := client.WS(
+		WithAutoReconnect(true),
+		// Fast reconnect to trigger loop quickly
+		WithReconnectBackoff(10*time.Millisecond, 100*time.Millisecond),
+	)
+
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer ws.Close()
+
+	// Start request in background
+	errResult := make(chan error, 1)
+	go func() {
+		_, err := ws.CallService(context.Background(), "light", "turn_on", nil)
+		errResult <- err
+	}()
+
+	<-requestReceived
+	// Trigger disconnect
+	close(disconnect)
+
+	// Verify request fails quickly
+	select {
+	case err := <-errResult:
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		// We expect ErrWSClosed or similar
+		if !strings.Contains(err.Error(), "ws connection closed") && !strings.Contains(err.Error(), "closed") {
+			t.Errorf("expected closed error, got: %v", err)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for pending request failure")
 	}
 
 	assertNoHandlerErr(t, errCh)
