@@ -195,6 +195,81 @@ if err != nil {
 fmt.Println(forecast.Forecast)
 ```
 
+### Helpers
+
+Subscribe to state changes for a single entity
+```go
+sub, err := ws.SubscribeStateChanged(context.Background(), "light.kitchen")
+if err != nil {
+	panic(err)
+}
+defer sub.Unsubscribe(context.Background())
+```
+
+Wait for a specific state
+```go
+err := ws.WaitForState(context.Background(), "light.kitchen", func(s ha.State) bool {
+	return s.State == "on"
+})
+if err != nil {
+	panic(err)
+}
+```
+
+Call a service with entity_id prefilled
+```go
+_, err := ws.CallServiceForEntity(
+	context.Background(),
+	"light",
+	"turn_on",
+	"light.kitchen",
+	map[string]interface{}{"brightness": 200},
+)
+if err != nil {
+	panic(err)
+}
+```
+
+Decode event payloads
+```go
+type StateChanged struct {
+	EntityID string  `json:"entity_id"`
+	NewState ha.State `json:"new_state"`
+}
+
+ev := <-sub.Events()
+data, err := ha.DecodeEventData[StateChanged](ev)
+if err != nil {
+	panic(err)
+}
+fmt.Println(data.EntityID, data.NewState.State)
+```
+
+Entity ID helpers
+```go
+id := ha.BuildEntityID("light", "kitchen") // light.kitchen
+domain, objectID, err := ha.ParseEntityID(id)
+if err != nil {
+	panic(err)
+}
+fmt.Println(domain, objectID)
+```
+
+History query builder
+```go
+query := ha.NewHistoryQuery().
+	WithStart(time.Now().Add(-24 * time.Hour)).
+	WithEnd(time.Now()).
+	WithEntities("light.kitchen", "sensor.temp").
+	WithNoAttributes(true)
+
+history, err := client.GetHistory(context.Background(), query)
+if err != nil {
+	panic(err)
+}
+fmt.Println(len(history))
+```
+
 ### WebSocket Client
 The client includes a WebSocket helper for real-time events.
 

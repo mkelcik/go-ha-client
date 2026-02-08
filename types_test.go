@@ -116,3 +116,80 @@ func TestNewServiceDataEntityID(t *testing.T) {
 		t.Fatalf("unexpected entity_id value: %#v", v)
 	}
 }
+
+func TestBuildAndParseEntityID(t *testing.T) {
+	t.Parallel()
+
+	id := BuildEntityID("light", "kitchen")
+	if id != "light.kitchen" {
+		t.Fatalf("unexpected entity id: %s", id)
+	}
+
+	domain, objectID, err := ParseEntityID(id)
+	if err != nil {
+		t.Fatalf("parse entity id: %v", err)
+	}
+	if domain != "light" || objectID != "kitchen" {
+		t.Fatalf("unexpected parsed values: %s %s", domain, objectID)
+	}
+}
+
+func TestParseEntityIDInvalid(t *testing.T) {
+	t.Parallel()
+
+	cases := []string{
+		"light",
+		"light.",
+		".kitchen",
+		"light.kitchen.extra",
+	}
+	for _, tc := range cases {
+		if _, _, err := ParseEntityID(tc); err == nil {
+			t.Fatalf("expected error for %q", tc)
+		}
+	}
+}
+
+func TestHistoryQueryBuilder(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2022, 1, 2, 3, 4, 5, 0, time.UTC)
+	end := time.Date(2022, 1, 3, 4, 5, 6, 0, time.UTC)
+
+	query := NewHistoryQuery().
+		WithStart(start).
+		WithEnd(end).
+		WithEntities("light.kitchen", "sensor.temp").
+		WithNoAttributes(true).
+		WithSignificantChangesOnly(true)
+
+	filter := query.Filter()
+	if filter.StartTime != start {
+		t.Fatalf("unexpected start time: %v", filter.StartTime)
+	}
+	if filter.EndTime != end {
+		t.Fatalf("unexpected end time: %v", filter.EndTime)
+	}
+	if filter.FilterEntityID != "light.kitchen,sensor.temp" {
+		t.Fatalf("unexpected entity filter: %s", filter.FilterEntityID)
+	}
+	if !filter.NoAttributes || !filter.SignificantChangesOnly {
+		t.Fatalf("unexpected flags: no_attributes=%t significant_changes_only=%t", filter.NoAttributes, filter.SignificantChangesOnly)
+	}
+
+	got := query.String()
+	escapedEnd := url.QueryEscape(end.Format(filterDateFormat))
+	escapedEntities := url.QueryEscape("light.kitchen,sensor.temp")
+	if !strings.Contains(got, "end_time="+escapedEnd) {
+		t.Fatalf("missing end_time in %q", got)
+	}
+	if !strings.Contains(got, "filter_entity_id="+escapedEntities) {
+		t.Fatalf("missing filter_entity_id in %q", got)
+	}
+	if !strings.Contains(got, "no_attributes=true") {
+		t.Fatalf("missing no_attributes in %q", got)
+	}
+	if !strings.Contains(got, "significant_changes_only=true") {
+		t.Fatalf("missing significant_changes_only in %q", got)
+	}
+}
