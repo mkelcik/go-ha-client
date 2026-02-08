@@ -439,7 +439,7 @@ func TestWSCallServiceForEntity(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
-func TestDecodeEventData(t *testing.T) {
+func TestWSEventStateChangedMissingNewState(t *testing.T) {
 	t.Parallel()
 
 	ev := WSEvent{
@@ -449,6 +449,24 @@ func TestDecodeEventData(t *testing.T) {
 	_, ok, err := ev.StateChanged()
 	if err != nil || ok {
 		t.Fatalf("expected ok=false err=nil for missing new_state: ok=%t err=%v", ok, err)
+	}
+}
+
+func TestDecodeEventData(t *testing.T) {
+	t.Parallel()
+
+	type payload struct {
+		EntityID string `json:"entity_id"`
+	}
+	ev := WSEvent{
+		Data: json.RawMessage(`{"entity_id":"light.kitchen"}`),
+	}
+	got, err := DecodeEventData[payload](ev)
+	if err != nil {
+		t.Fatalf("decode event: %v", err)
+	}
+	if got.EntityID != "light.kitchen" {
+		t.Fatalf("unexpected entity id: %s", got.EntityID)
 	}
 }
 
