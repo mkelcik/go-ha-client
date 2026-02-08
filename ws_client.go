@@ -526,7 +526,7 @@ func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*
 
 		// Track subscription for auto-reconnect
 		c.mu.Lock()
-		c.activeSubs[sub.id] = subscriptionRequest{
+		c.activeSubs[sub.ID()] = subscriptionRequest{
 			request: cloneWSRequest(req),
 			sub:     sub,
 		}
@@ -976,31 +976,31 @@ func (c *WSClient) restoreSubscriptions() {
 			continue
 		}
 
-		// map the new ID to the OLD subscription object so the user keeps receiving events
-		// map the new ID to the OLD subscription object so the user keeps receiving events
+		// Map the new ID to the OLD subscription object so the user keeps receiving events.
 		c.mu.Lock()
 
 		// If the new ID is different from the old ID, we need to clean up the old ID from activeSubs and subs
-		if newSub.id != oldID {
+		newID := newSub.ID()
+		if newID != oldID {
 			delete(c.activeSubs, oldID)
 			delete(c.subs, oldID) // Clean up stale entry in main subs map
 		}
 
 		// Remove the temporary newSub created by subscribe() from activeSubs
 		// We only want the OLD sub object in activeSubs, updated with the new ID
-		delete(c.activeSubs, newSub.id)
+		delete(c.activeSubs, newID)
 
 		// Update the activeSubs with new ID but OLD sub object
-		c.activeSubs[newSub.id] = subscriptionRequest{
+		c.activeSubs[newID] = subscriptionRequest{
 			request: subReq.request,
 			sub:     subReq.sub,
 		}
 
 		// Point the main subs map to the OLD sub object associated with the new ID
-		c.subs[newSub.id] = subReq.sub
+		c.subs[newID] = subReq.sub
 
 		// Update ID on the old sub object
-		atomic.StoreInt64(&subReq.sub.id, newSub.id)
+		atomic.StoreInt64(&subReq.sub.id, newID)
 		c.mu.Unlock()
 
 		// Helper to forward events from newSub to oldSub (handling race condition where events arrive before swap)
@@ -1018,7 +1018,7 @@ func (c *WSClient) restoreSubscriptions() {
 						continue
 					}
 					// Fix subscription ID in the event to match the restored ID
-					ev.SubscriptionID = dst.id
+					ev.SubscriptionID = dst.ID()
 
 					select {
 					case dst.events <- ev:
