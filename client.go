@@ -46,8 +46,8 @@ const (
 var (
 	ErrNotFound        = errors.New("not found")
 	ErrUnauthorized    = errors.New("unauthorized")
-	ErrEmptyEntityID   = errors.New("entityId must not be empty")
-	ErrEmptyCalendarID = errors.New("calendarId must not be empty")
+	ErrEmptyEntityID   = errors.New("entityID must not be empty")
+	ErrEmptyCalendarID = errors.New("calendarID must not be empty")
 	ErrEmptyTemplate   = errors.New("empty template")
 	ErrEmptyService    = errors.New("empty service name")
 	ErrEmptyDomain     = errors.New("empty domain name")
