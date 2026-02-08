@@ -1050,20 +1050,28 @@ func (c *WSClient) restoreSubscriptions() {
 }
 
 func (c *WSClient) unsubscribeIfCreated(respCh <-chan wsPendingResult, fallbackID int64) {
-	res, ok := <-respCh
-	if !ok || res.err != nil {
+	timer := time.NewTimer(wsUnsubscribeTimeout)
+	defer timer.Stop()
+
+	select {
+	case res, ok := <-respCh:
+		if !ok || res.err != nil {
+			return
+		}
+		if res.msg.Type != "result" || !res.msg.Success {
+			return
+		}
+		subscriptionID, err := subscriptionIDFromResult(res.msg.Result, fallbackID)
+		if err != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), wsUnsubscribeTimeout)
+		defer cancel()
+		_ = c.unsubscribe(ctx, subscriptionID)
+	case <-timer.C:
+		c.cleanupPending(fallbackID)
 		return
 	}
-	if res.msg.Type != "result" || !res.msg.Success {
-		return
-	}
-	subscriptionID, err := subscriptionIDFromResult(res.msg.Result, fallbackID)
-	if err != nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), wsUnsubscribeTimeout)
-	defer cancel()
-	_ = c.unsubscribe(ctx, subscriptionID)
 }
 
 func websocketURL(host string) (string, error) {
