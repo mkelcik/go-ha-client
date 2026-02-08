@@ -87,11 +87,12 @@ func (e WSEvent) StateChanged() (StateChangedEventData, bool, error) {
 
 // WSSubscription represents an active event subscription.
 type WSSubscription struct {
-	id     int64
-	events chan WSEvent
-	errors chan error
-	client *WSClient
-	once   sync.Once
+	id       int64
+	idSource *int64
+	events   chan WSEvent
+	errors   chan error
+	client   *WSClient
+	once     sync.Once
 }
 
 // WSCallServiceResult represents a response to a call_service request.
@@ -105,6 +106,9 @@ type WSCallServiceResult struct {
 }
 
 func (s *WSSubscription) ID() int64 {
+	if s.idSource != nil {
+		return atomic.LoadInt64(s.idSource)
+	}
 	return atomic.LoadInt64(&s.id)
 }
 

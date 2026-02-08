@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync/atomic"
 )
 
 // SubscribeStateChanged subscribes to state changes for a single entity.
@@ -99,10 +98,11 @@ func DecodeEventData[T any](event WSEvent) (T, error) {
 
 func filterSubscriptionByEntity(sub *WSSubscription, entityID string) *WSSubscription {
 	filtered := &WSSubscription{
-		id:     atomic.LoadInt64(&sub.id),
-		events: make(chan WSEvent, 32),
-		errors: make(chan error, 1),
-		client: sub.client,
+		id:       sub.ID(),
+		idSource: &sub.id,
+		events:   make(chan WSEvent, 32),
+		errors:   make(chan error, 1),
+		client:   sub.client,
 	}
 
 	go func() {
