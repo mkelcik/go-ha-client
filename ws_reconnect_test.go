@@ -237,6 +237,12 @@ func testResubscribe(t *testing.T, sameID bool) {
 
 	errCh := make(chan error, 1)
 	var connectionCount int32
+	const initialSubID int64 = 50
+	const restoredSubID int64 = 51
+	expectedRestoredID := initialSubID
+	if !sameID {
+		expectedRestoredID = restoredSubID
+	}
 
 	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
 		count := atomic.AddInt32(&connectionCount, 1)
@@ -259,7 +265,7 @@ func testResubscribe(t *testing.T, sameID bool) {
 				"id":      subReq["id"],
 				"type":    "result",
 				"success": true,
-				"result":  nil,
+				"result":  initialSubID,
 			})
 			close(subscribed)
 
@@ -275,33 +281,18 @@ func testResubscribe(t *testing.T, sameID bool) {
 			if err := conn.ReadJSON(&subReq); err != nil {
 				return
 			}
-
-			// Determine response ID
 			responseID := subReq["id"]
-			if !sameID {
-				// We can't easily force client to change ID without hacking internal state or response.
-				// But we can verify that the client accepts whatever response we give...
-				// Actually client maps response ID to subscription ID.
-				// If we respond with success and `result: nil`, it implies ID matches request.
-				// To simulate "New ID", we would need to respond with specific result payload if supported?
-				// But `subscribe_events` doesn't return new ID in result.
-				// So for `subscribe_events`, ID is always Request ID.
-				// And since we reset `nextID` to 0, Request ID will start from 1 again.
-				// So it will be SameID unless we have traffic before restore.
-				// So `sameID` param is mostly symbolic here without more complex setup.
-				// We'll proceed with normal flow to verify stability.
-			}
 
 			_ = conn.WriteJSON(map[string]interface{}{
 				"id":      responseID,
 				"type":    "result",
 				"success": true,
-				"result":  nil,
+				"result":  expectedRestoredID,
 			})
 
 			// Send event with that ID
 			_ = conn.WriteJSON(map[string]interface{}{
-				"id":   responseID, // This matches what client expects from Restore request
+				"id":   expectedRestoredID, // This matches the restored subscription ID
 				"type": "event",
 				"event": map[string]interface{}{
 					"event_type": "state_changed",
@@ -333,6 +324,9 @@ func testResubscribe(t *testing.T, sameID bool) {
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
+	if sub.ID() != initialSubID {
+		t.Fatalf("unexpected initial subscription id: %d", sub.ID())
+	}
 
 	<-firstConnect
 	<-subscribed
@@ -350,6 +344,9 @@ func testResubscribe(t *testing.T, sameID bool) {
 		// Success
 	case <-time.After(2 * time.Second):
 		t.Fatalf("timeout waiting for event after resubscribe")
+	}
+	if sub.ID() != expectedRestoredID {
+		t.Fatalf("unexpected restored subscription id: %d", sub.ID())
 	}
 
 	assertNoHandlerErr(t, errCh)

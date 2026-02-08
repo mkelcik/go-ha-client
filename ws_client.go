@@ -957,13 +957,14 @@ func (c *WSClient) restoreSubscriptions() {
 			// Wait a tiny bit to ensure any in-flight dispatch is done
 			time.Sleep(100 * time.Millisecond)
 
-			// Drain remaining events
-		Loop:
-			for {
+			eventsCh := src.events
+			errorsCh := src.errors
+			for eventsCh != nil || errorsCh != nil {
 				select {
-				case ev, ok := <-src.events:
+				case ev, ok := <-eventsCh:
 					if !ok {
-						break Loop
+						eventsCh = nil
+						continue
 					}
 					// Fix subscription ID in the event to match the restored ID
 					ev.SubscriptionID = dst.id
@@ -973,8 +974,20 @@ func (c *WSClient) restoreSubscriptions() {
 					default:
 						// If destination full, we drop
 					}
+				case err, ok := <-errorsCh:
+					if !ok {
+						errorsCh = nil
+						continue
+					}
+					if err == nil {
+						continue
+					}
+					select {
+					case dst.errors <- err:
+					default:
+					}
 				default:
-					break Loop
+					return
 				}
 			}
 		}(newSub, subReq.sub)
