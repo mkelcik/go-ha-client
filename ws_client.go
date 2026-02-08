@@ -274,7 +274,7 @@ func (c *WSClient) Connect(ctx context.Context) error {
 	c.pending = make(map[int64]chan wsPendingResult)
 	c.pendingSubs = make(map[int64]*WSSubscription)
 	c.subs = make(map[int64]*WSSubscription)
-	c.nextID = 0
+	atomic.StoreInt64(&c.nextID, 0)
 	c.mu.Unlock()
 
 	go c.readLoop(conn)
@@ -894,7 +894,7 @@ func (c *WSClient) doConnect(ctx context.Context) error {
 	c.pending = make(map[int64]chan wsPendingResult)
 	c.pendingSubs = make(map[int64]*WSSubscription)
 	c.subs = make(map[int64]*WSSubscription)
-	c.nextID = 0
+	atomic.StoreInt64(&c.nextID, 0)
 	c.mu.Unlock()
 
 	go c.readLoop(conn)
@@ -926,22 +926,55 @@ func (c *WSClient) restoreSubscriptions() {
 		}
 
 		// map the new ID to the OLD subscription object so the user keeps receiving events
+		// map the new ID to the OLD subscription object so the user keeps receiving events
 		c.mu.Lock()
-		// Remove the temporary newSub created by subscribe()
+
+		// If the new ID is different from the old ID, we need to clean up the old ID from activeSubs and subs
+		if newSub.id != oldID {
+			delete(c.activeSubs, oldID)
+			delete(c.subs, oldID) // Clean up stale entry in main subs map
+		}
+
+		// Remove the temporary newSub created by subscribe() from activeSubs
+		// We only want the OLD sub object in activeSubs, updated with the new ID
 		delete(c.activeSubs, newSub.id)
+
 		// Update the activeSubs with new ID but OLD sub object
 		c.activeSubs[newSub.id] = subscriptionRequest{
 			request: subReq.request,
 			sub:     subReq.sub,
 		}
-		delete(c.activeSubs, oldID)
 
-		// Point the main subs map to the OLD sub object
+		// Point the main subs map to the OLD sub object associated with the new ID
 		c.subs[newSub.id] = subReq.sub
 
 		// Update ID on the old sub object
 		subReq.sub.id = newSub.id
 		c.mu.Unlock()
+
+		// Helper to forward events from newSub to oldSub (handling race condition where events arrive before swap)
+		go func(src *WSSubscription, dst *WSSubscription) {
+			// Wait a tiny bit to ensure any in-flight dispatch is done
+			time.Sleep(100 * time.Millisecond)
+
+			// Drain remaining events
+		Loop:
+			for {
+				select {
+				case ev := <-src.events:
+					// Fix subscription ID in the event to match the restored ID
+					ev.SubscriptionID = dst.id
+
+					select {
+					case dst.events <- ev:
+					default:
+						// If destination full, we drop
+					}
+				default:
+					break Loop
+				}
+			}
+		}(newSub, subReq.sub)
 	}
 }
 
