@@ -250,29 +250,29 @@ type StateEntity struct {
 type PlainText string
 
 // NewTurnLightOnCmd is helper for turning light on
-func NewTurnLightOnCmd(entityId string) DefaultServiceCmd {
+func NewTurnLightOnCmd(entityID string) DefaultServiceCmd {
 	return DefaultServiceCmd{
 		Service:  ServiceTurnOn,
 		Domain:   DomainLight,
-		EntityID: entityId,
+		EntityID: entityID,
 	}
 }
 
 // NewTurnLightOffCmd is helper for turning light off
-func NewTurnLightOffCmd(entityId string) DefaultServiceCmd {
+func NewTurnLightOffCmd(entityID string) DefaultServiceCmd {
 	return DefaultServiceCmd{
 		Service:  ServiceTurnOff,
 		Domain:   DomainLight,
-		EntityID: entityId,
+		EntityID: entityID,
 	}
 }
 
 // NewToggleLightCmd is helper for toggling light state.
-func NewToggleLightCmd(entityId string) DefaultServiceCmd {
+func NewToggleLightCmd(entityID string) DefaultServiceCmd {
 	return DefaultServiceCmd{
 		Service:  ServiceToggle,
 		Domain:   DomainLight,
-		EntityID: entityId,
+		EntityID: entityID,
 	}
 }
 

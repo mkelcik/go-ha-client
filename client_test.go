@@ -885,7 +885,7 @@ func TestGetCalendarEvents(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
-func TestGetCalendarEventsEscapesCalendarId(t *testing.T) {
+func TestGetCalendarEventsEscapesCalendarID(t *testing.T) {
 	t.Parallel()
 
 	start := time.Date(2021, 8, 1, 10, 0, 0, 0, time.UTC)

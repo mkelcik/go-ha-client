@@ -176,20 +176,20 @@ func (c *Client) GetStates(ctx context.Context) (StateEntities, error) {
 }
 
 // GetStateForEntity retrieves the state for a specific entity.
-func (c *Client) GetStateForEntity(ctx context.Context, entityId string) (StateEntity, error) {
+func (c *Client) GetStateForEntity(ctx context.Context, entityID string) (StateEntity, error) {
 	state := StateEntity{}
-	if entityId == "" {
+	if entityID == "" {
 		return state, ErrEmptyEntityID
 	}
-	return state, c.doGetRequestJson(ctx, fmt.Sprintf(epStateEntity, url.PathEscape(entityId)), &state)
+	return state, c.doGetRequestJson(ctx, fmt.Sprintf(epStateEntity, url.PathEscape(entityID)), &state)
 }
 
 // DeleteState deletes a state.
-func (c *Client) DeleteState(ctx context.Context, entityId string) error {
-	if entityId == "" {
+func (c *Client) DeleteState(ctx context.Context, entityID string) error {
+	if entityID == "" {
 		return ErrEmptyEntityID
 	}
-	return c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(epStateEntity, url.PathEscape(entityId)), nil, func(reader io.Reader) error {
+	return c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(epStateEntity, url.PathEscape(entityID)), nil, func(reader io.Reader) error {
 		return nil
 	})
 }
@@ -211,9 +211,9 @@ func (c *Client) GetCalendars(ctx context.Context) (Calendars, error) {
 }
 
 // GetCalendarEvents retrieves events for a specific calendar.
-func (c *Client) GetCalendarEvents(ctx context.Context, calendarId string, start, end time.Time) (CalendarEvents, error) {
+func (c *Client) GetCalendarEvents(ctx context.Context, calendarID string, start, end time.Time) (CalendarEvents, error) {
 	events := CalendarEvents{}
-	if calendarId == "" {
+	if calendarID == "" {
 		return events, ErrEmptyCalendarID
 	}
 
@@ -230,7 +230,7 @@ func (c *Client) GetCalendarEvents(ctx context.Context, calendarId string, start
 		queryString = "?" + query.Encode()
 	}
 
-	endpoint := fmt.Sprintf("%s/%s%s", epCalendars, url.PathEscape(calendarId), queryString)
+	endpoint := fmt.Sprintf("%s/%s%s", epCalendars, url.PathEscape(calendarID), queryString)
 	return events, c.doGetRequestJson(ctx, endpoint, &events)
 }
 
@@ -257,9 +257,9 @@ func (c *Client) GetCameraJpeg(ctx context.Context, cameraEntityID string) (imag
 }
 
 // CreateState creates or updates a state.
-func (c *Client) CreateState(ctx context.Context, entityId string, newState State) (StateResponse, error) {
+func (c *Client) CreateState(ctx context.Context, entityID string, newState State) (StateResponse, error) {
 	response := StateResponse{}
-	if entityId == "" {
+	if entityID == "" {
 		return response, ErrEmptyEntityID
 	}
 	b, err := json.Marshal(newState)
@@ -267,7 +267,7 @@ func (c *Client) CreateState(ctx context.Context, entityId string, newState Stat
 		return response, fmt.Errorf("error creating state request body: %w", err)
 	}
 
-	respCode, err := c.doWithHeaders(ctx, http.MethodPost, fmt.Sprintf(epStateEntity, url.PathEscape(entityId)), bytes.NewBuffer(b), map[string]string{
+	respCode, err := c.doWithHeaders(ctx, http.MethodPost, fmt.Sprintf(epStateEntity, url.PathEscape(entityID)), bytes.NewBuffer(b), map[string]string{
 		headerContentType: mimeTypeJSON,
 	}, func(reader io.Reader) error {
 		return json.NewDecoder(reader).Decode(&response)
@@ -372,14 +372,14 @@ func (c *Client) HandleIntent(ctx context.Context, req IntentRequest) (IntentRes
 }
 
 // GetWeatherForecasts retrieves weather forecasts.
-func (c *Client) GetWeatherForecasts(ctx context.Context, entityId, forecastType string) (WeatherForecasts, error) {
+func (c *Client) GetWeatherForecasts(ctx context.Context, entityID, forecastType string) (WeatherForecasts, error) {
 	forecasts := WeatherForecasts{}
-	if entityId == "" {
+	if entityID == "" {
 		return forecasts, ErrEmptyEntityID
 	}
 
 	b, err := json.Marshal(WeatherForecastRequest{
-		EntityID: entityId,
+		EntityID: entityID,
 		Type:     forecastType,
 	})
 	if err != nil {
@@ -391,9 +391,9 @@ func (c *Client) GetWeatherForecasts(ctx context.Context, entityId, forecastType
 		return forecasts, err
 	}
 
-	raw, ok := resp.ServiceResponse[entityId]
+	raw, ok := resp.ServiceResponse[entityID]
 	if !ok {
-		return forecasts, fmt.Errorf("missing service response for entity `%s`", entityId)
+		return forecasts, fmt.Errorf("missing service response for entity `%s`", entityID)
 	}
 
 	if err := json.Unmarshal(raw, &forecasts); err != nil {
