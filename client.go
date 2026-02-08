@@ -456,7 +456,8 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 
 func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string, bodyDecoder func(reader io.Reader) error) (*int, error) {
 	var reqBody []byte
-	if c.config.Logger != nil && body != nil {
+	debugEnabled := isDebugEnabled(c.config.Logger, ctx)
+	if debugEnabled && body != nil {
 		reqBody, _ = io.ReadAll(body)
 		body = bytes.NewReader(reqBody)
 	}
@@ -470,11 +471,11 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 		req.Header.Set(key, value)
 	}
 
-	if c.config.Logger != nil {
+	if debugEnabled {
 		if len(reqBody) > 0 {
-			c.config.Logger.Debug("request", "method", req.Method, "url", req.URL.String(), "body", truncateForLog(reqBody))
+			c.config.Logger.Debug("request", "method", req.Method, "url", redactURL(req.URL.String()), "body", redactJSON(reqBody))
 		} else {
-			c.config.Logger.Debug("request", "method", req.Method, "url", req.URL.String())
+			c.config.Logger.Debug("request", "method", req.Method, "url", redactURL(req.URL.String()))
 		}
 	}
 
@@ -485,9 +486,9 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 	defer resp.Body.Close()
 
 	var respBody []byte
-	if c.config.Logger != nil {
+	if debugEnabled {
 		respBody, _ = io.ReadAll(resp.Body)
-		c.config.Logger.Debug("response", "method", req.Method, "url", req.URL.String(), "status", resp.StatusCode, "body", truncateForLog(respBody))
+		c.config.Logger.Debug("response", "method", req.Method, "url", redactURL(req.URL.String()), "status", resp.StatusCode, "content-type", resp.Header.Get("Content-Type"), "body", redactJSON(respBody))
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 	}
 

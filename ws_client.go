@@ -469,7 +469,7 @@ func (c *WSClient) readLoop(conn *websocket.Conn) {
 			return
 		}
 
-		if c.config.Logger != nil {
+		if isDebugEnabled(c.config.Logger, context.Background()) {
 			c.config.Logger.Debug("recv", "payload", formatWSLogPayload(msg))
 		}
 
@@ -637,7 +637,7 @@ func (c *WSClient) writeJSON(v interface{}) error {
 	if conn == nil {
 		return ErrWSNotConnected
 	}
-	if c.config.Logger != nil {
+	if isDebugEnabled(c.config.Logger, context.Background()) {
 		c.config.Logger.Debug("send", "payload", formatWSLogPayload(v))
 	}
 	return conn.WriteJSON(v)
