@@ -229,6 +229,193 @@ func TestWSResubscribeWithNewID(t *testing.T) {
 	testResubscribe(t, false)
 }
 
+func TestWSReconnectSubscribeAndCallServiceEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	firstSubscribed := make(chan struct{})
+	firstCallDone := make(chan struct{})
+	restored := make(chan struct{})
+	reconnected := make(chan struct{})
+
+	errCh := make(chan error, 1)
+	var connectionCount int32
+	const initialSubID int64 = 10
+	const restoredSubID int64 = 20
+
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		count := atomic.AddInt32(&connectionCount, 1)
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		if count == 1 {
+			subReq := map[string]interface{}{}
+			if err := conn.ReadJSON(&subReq); err != nil {
+				reportHandlerErr(errCh, err)
+				return
+			}
+			if subReq["type"] != "subscribe_events" {
+				reportHandlerErr(errCh, errors.New("expected subscribe_events"))
+				return
+			}
+			_ = conn.WriteJSON(map[string]interface{}{
+				"id":      subReq["id"],
+				"type":    "result",
+				"success": true,
+				"result":  initialSubID,
+			})
+			close(firstSubscribed)
+
+			callReq := map[string]interface{}{}
+			if err := conn.ReadJSON(&callReq); err != nil {
+				reportHandlerErr(errCh, err)
+				return
+			}
+			if callReq["type"] != "call_service" {
+				reportHandlerErr(errCh, errors.New("expected call_service"))
+				return
+			}
+			_ = conn.WriteJSON(map[string]interface{}{
+				"id":      callReq["id"],
+				"type":    "result",
+				"success": true,
+				"result": map[string]interface{}{
+					"context": map[string]interface{}{
+						"id": "ctx-1",
+					},
+				},
+			})
+			close(firstCallDone)
+			return
+		}
+
+		if count == 2 {
+			close(reconnected)
+
+			subReq := map[string]interface{}{}
+			if err := conn.ReadJSON(&subReq); err != nil {
+				reportHandlerErr(errCh, err)
+				return
+			}
+			if subReq["type"] != "subscribe_events" {
+				reportHandlerErr(errCh, errors.New("expected subscribe_events restore"))
+				return
+			}
+			_ = conn.WriteJSON(map[string]interface{}{
+				"id":      subReq["id"],
+				"type":    "result",
+				"success": true,
+				"result":  restoredSubID,
+			})
+			close(restored)
+
+			_ = conn.WriteJSON(map[string]interface{}{
+				"id":   restoredSubID,
+				"type": "event",
+				"event": map[string]interface{}{
+					"event_type": "state_changed",
+					"data": map[string]interface{}{
+						"entity_id": "light.office",
+					},
+				},
+			})
+
+			callReq := map[string]interface{}{}
+			if err := conn.ReadJSON(&callReq); err != nil {
+				reportHandlerErr(errCh, err)
+				return
+			}
+			if callReq["type"] != "call_service" {
+				reportHandlerErr(errCh, errors.New("expected call_service after reconnect"))
+				return
+			}
+			_ = conn.WriteJSON(map[string]interface{}{
+				"id":      callReq["id"],
+				"type":    "result",
+				"success": true,
+				"result": map[string]interface{}{
+					"context": map[string]interface{}{
+						"id": "ctx-2",
+					},
+				},
+			})
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
+	defer srv.Close()
+
+	client, err := NewClient(srv.URL, WithToken("token"))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	ws := client.WS(
+		WithAutoReconnect(true),
+		WithReconnectBackoff(10*time.Millisecond, 100*time.Millisecond),
+	)
+
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer ws.Close()
+
+	sub, err := ws.SubscribeEvents(context.Background(), "state_changed")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if sub.ID() != initialSubID {
+		t.Fatalf("unexpected initial subscription id: %d", sub.ID())
+	}
+
+	<-firstSubscribed
+
+	result, err := ws.CallService(context.Background(), "light", "turn_on", nil)
+	if err != nil {
+		t.Fatalf("call service: %v", err)
+	}
+	if result.Context.ID != "ctx-1" {
+		t.Fatalf("unexpected call_service context: %s", result.Context.ID)
+	}
+	<-firstCallDone
+
+	select {
+	case <-reconnected:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for reconnect")
+	}
+
+	select {
+	case <-restored:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for subscription restore")
+	}
+
+	select {
+	case ev := <-sub.Events():
+		if ev.EventType != "state_changed" {
+			t.Fatalf("unexpected event type: %s", ev.EventType)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for event after reconnect")
+	}
+
+	result, err = ws.CallService(context.Background(), "light", "turn_off", nil)
+	if err != nil {
+		t.Fatalf("call service after reconnect: %v", err)
+	}
+	if result.Context.ID != "ctx-2" {
+		t.Fatalf("unexpected call_service context after reconnect: %s", result.Context.ID)
+	}
+
+	if sub.ID() != restoredSubID {
+		t.Fatalf("unexpected restored subscription id: %d", sub.ID())
+	}
+
+	assertNoHandlerErr(t, errCh)
+}
+
 func testResubscribe(t *testing.T, sameID bool) {
 	// phases
 	firstConnect := make(chan struct{})

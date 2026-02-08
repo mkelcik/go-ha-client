@@ -23,6 +23,14 @@ Tested with home-assistant `core-2021.7.2`.
 - [Security policy](SECURITY.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
 - [Changelog](CHANGELOG.md)
+- [Release notes](RELEASE_NOTES.md)
+- [Migration guide](MIGRATION.md)
+
+### Production readiness checklist (beta)
+- Freeze the public API and tag `v2.0.0` (no breaking changes after that).
+- Document stability/support policy in README.
+- Add 1-2 WS integration tests (reconnect + subscribe + call_service end-to-end).
+- Prepare release notes and a short migration guide for v2.
 
 ### Install
 ```bash
