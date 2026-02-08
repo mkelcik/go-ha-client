@@ -961,7 +961,10 @@ func (c *WSClient) restoreSubscriptions() {
 		Loop:
 			for {
 				select {
-				case ev := <-src.events:
+				case ev, ok := <-src.events:
+					if !ok {
+						break Loop
+					}
 					// Fix subscription ID in the event to match the restored ID
 					ev.SubscriptionID = dst.id
 
