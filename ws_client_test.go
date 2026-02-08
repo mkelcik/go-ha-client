@@ -270,9 +270,12 @@ func TestWSSubscribeStateChangedFiltersEntity(t *testing.T) {
 
 	select {
 	case ev := <-sub.Events():
-		data, err := DecodeEventData[stateChangedData](ev)
+		data, ok, err := ev.StateChanged()
 		if err != nil {
 			t.Fatalf("decode event: %v", err)
+		}
+		if !ok {
+			t.Fatalf("expected state_changed data")
 		}
 		if data.EntityID != "light.kitchen" {
 			t.Fatalf("unexpected entity id: %s", data.EntityID)
@@ -439,18 +442,55 @@ func TestWSCallServiceForEntity(t *testing.T) {
 func TestDecodeEventData(t *testing.T) {
 	t.Parallel()
 
-	type payload struct {
-		EntityID string `json:"entity_id"`
-	}
 	ev := WSEvent{
-		Data: json.RawMessage(`{"entity_id":"light.kitchen"}`),
+		EventType: EventTypeStateChanged,
+		Data:      json.RawMessage(`{"entity_id":"light.kitchen"}`),
 	}
-	got, err := DecodeEventData[payload](ev)
+	_, ok, err := ev.StateChanged()
+	if err != nil || ok {
+		t.Fatalf("expected ok=false err=nil for missing new_state: ok=%t err=%v", ok, err)
+	}
+}
+
+func TestWSEventStateChanged(t *testing.T) {
+	t.Parallel()
+
+	ev := WSEvent{
+		EventType: EventTypeStateChanged,
+		Data: json.RawMessage(`{
+			"entity_id":"light.kitchen",
+			"old_state":{"state":"off"},
+			"new_state":{"state":"on"}
+		}`),
+	}
+	got, ok, err := ev.StateChanged()
 	if err != nil {
-		t.Fatalf("decode event: %v", err)
+		t.Fatalf("state changed: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected ok=true")
 	}
 	if got.EntityID != "light.kitchen" {
 		t.Fatalf("unexpected entity id: %s", got.EntityID)
+	}
+	if got.OldState == nil || got.NewState == nil {
+		t.Fatalf("expected old/new state")
+	}
+	if got.OldState.State != "off" || got.NewState.State != "on" {
+		t.Fatalf("unexpected states: old=%s new=%s", got.OldState.State, got.NewState.State)
+	}
+}
+
+func TestWSEventStateChangedNonStateEvent(t *testing.T) {
+	t.Parallel()
+
+	ev := WSEvent{
+		EventType: EventTypeHomeAssistantStart,
+		Data:      json.RawMessage(`{"foo":"bar"}`),
+	}
+	_, ok, err := ev.StateChanged()
+	if err != nil || ok {
+		t.Fatalf("expected ok=false err=nil, got ok=%t err=%v", ok, err)
 	}
 }
 

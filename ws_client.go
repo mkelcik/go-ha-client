@@ -59,6 +59,32 @@ type WSEvent struct {
 	Raw            json.RawMessage
 }
 
+// StateChangedEventData represents the payload for state_changed events.
+type StateChangedEventData struct {
+	EntityID string `json:"entity_id"`
+	NewState *State `json:"new_state"`
+	OldState *State `json:"old_state"`
+}
+
+// StateChanged returns state_changed data when available.
+// ok=false means this event doesn't carry state_changed data.
+func (e WSEvent) StateChanged() (StateChangedEventData, bool, error) {
+	if e.EventType != EventTypeStateChanged {
+		return StateChangedEventData{}, false, nil
+	}
+	if len(e.Data) == 0 {
+		return StateChangedEventData{}, false, nil
+	}
+	var data StateChangedEventData
+	if err := json.Unmarshal(e.Data, &data); err != nil {
+		return StateChangedEventData{}, false, err
+	}
+	if data.EntityID == "" || data.NewState == nil {
+		return StateChangedEventData{}, false, nil
+	}
+	return data, true, nil
+}
+
 // WSSubscription represents an active event subscription.
 type WSSubscription struct {
 	id     int64

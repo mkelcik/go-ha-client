@@ -7,11 +7,6 @@ import (
 	"sync/atomic"
 )
 
-type stateChangedData struct {
-	EntityID string `json:"entity_id"`
-	NewState State  `json:"new_state"`
-}
-
 // SubscribeStateChanged subscribes to state changes for a single entity.
 func (c *WSClient) SubscribeStateChanged(ctx context.Context, entityID string) (*WSSubscription, error) {
 	if entityID == "" {
@@ -58,11 +53,17 @@ func (c *WSClient) WaitForState(ctx context.Context, entityID string, predicate 
 			if !ok {
 				return ErrWSClosed
 			}
-			data, err := DecodeEventData[stateChangedData](ev)
+			data, ok, err := ev.StateChanged()
 			if err != nil {
 				continue
 			}
-			if predicate(data.NewState) {
+			if !ok {
+				continue
+			}
+			if data.NewState == nil {
+				continue
+			}
+			if predicate(*data.NewState) {
 				return nil
 			}
 		}
@@ -122,8 +123,8 @@ func filterSubscriptionByEntity(sub *WSSubscription, entityID string) *WSSubscri
 				if ev.EventType != EventTypeStateChanged {
 					continue
 				}
-				payload, err := DecodeEventData[stateChangedData](ev)
-				if err != nil || payload.EntityID != entityID {
+				payload, ok, err := ev.StateChanged()
+				if err != nil || !ok || payload.EntityID != entityID {
 					continue
 				}
 				select {

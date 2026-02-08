@@ -32,6 +32,14 @@ Tested with home-assistant `core-2021.7.2`.
 - Add 1-2 WS integration tests (reconnect + subscribe + call_service end-to-end).
 - Prepare release notes and a short migration guide for v2.
 
+### Non-goals
+- Full coverage of all Home Assistant APIs (focus is official REST/WS docs).
+- Automations/blueprints scheduling or orchestration.
+- Deep schema validation for service payloads (delegated to HA).
+- Token management or authentication flows (token must be provided).
+- Strong typing of dynamic event attributes (kept as `map[string]interface{}`).
+- Support for unofficial/custom endpoints.
+
 ### Install
 ```bash
 go get github.com/mkelcik/go-ha-client/v2@latest
@@ -297,6 +305,86 @@ if err != nil {
 // Automatically restores subscription after reconnect!
 for event := range sub.Events() {
 	fmt.Printf("Event: %s\n", event.EventType)
+}
+```
+
+#### Understanding WSEvent (Raw vs Data)
+`WSEvent` includes:
+- `EventType` — the HA event type (e.g. `state_changed`)
+- `Data` — just `event.data` (convenient for common use)
+- `Raw` — the full `event` payload (includes `event_type`, `time_fired`, `context`, etc.)
+
+Example WebSocket message (as received from HA):
+```json
+{
+  "type": "event",
+  "id": 1,
+  "event": {
+    "event_type": "state_changed",
+    "data": {
+      "entity_id": "light.kitchen",
+      "old_state": { "state": "off" },
+      "new_state": { "state": "on" }
+    },
+    "time_fired": "2026-02-06T18:00:40.191Z",
+    "context": { "id": "01KGT1SYDBVFFN56FYWT8W11B6" }
+  }
+}
+```
+
+Use the `StateChanged()` helper for the typical `state_changed` case:
+```go
+for ev := range sub.Events() {
+	data, ok, err := ev.StateChanged()
+	if err != nil {
+		continue
+	}
+	if !ok {
+		continue
+	}
+	if data.NewState == nil {
+		continue
+	}
+	oldState := ""
+	if data.OldState != nil {
+		oldState = data.OldState.State
+	}
+	fmt.Println(data.EntityID, data.NewState.State, oldState)
+}
+```
+
+You can also read `Data` directly if you prefer:
+```go
+type StateChanged struct {
+	EntityID string `json:"entity_id"`
+	NewState struct {
+		State string `json:"state"`
+	} `json:"new_state"`
+}
+
+for ev := range sub.Events() {
+	data, err := ha.DecodeEventData[StateChanged](ev)
+	if err != nil {
+		continue
+	}
+	fmt.Println(data.EntityID, data.NewState.State)
+}
+```
+
+Use `Raw` when you need the full envelope (e.g. `time_fired`, `context`):
+```go
+type FullEvent struct {
+	EventType string `json:"event_type"`
+	TimeFired string `json:"time_fired"`
+	Context   struct {
+		ID string `json:"id"`
+	} `json:"context"`
+	Data ha.StateChangedEventData `json:"data"`
+}
+
+var full FullEvent
+if err := json.Unmarshal(ev.Raw, &full); err == nil {
+	fmt.Println(full.EventType, full.TimeFired, full.Context.ID)
 }
 ```
 
