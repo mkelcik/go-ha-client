@@ -13,7 +13,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.
 
 ### Fixed
-- Return `ErrNilHTTPClient` when `NewClient` is called with a nil HTTP client.
+- `NewClient` now falls back to `http.DefaultClient` when a nil HTTP client is provided.
 
 ## [v2.0.0-beta.2]
 
