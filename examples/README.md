@@ -20,7 +20,6 @@ go run ./examples/rest_ping
 - `examples/rest_camera_snapshot`: Download camera JPEG and save it to file.
 - `examples/rest_render_template`: Render a Home Assistant template.
 - `examples/rest_history_query`: Query entity history with `HistoryQuery` builder.
-- `examples/helpers_light_commands`: Use helper functions (`BuildEntityID`, `ParseEntityID`, `NewTurnLightOnCmd`, `NewTurnLightOffCmd`, `NewToggleLightCmd`, `NewServiceDataEntityID`).
 
 ## WebSocket examples
 
@@ -29,6 +28,10 @@ go run ./examples/rest_ping
 - `examples/ws_wait_for_state`: Wait until an entity reaches target state.
 - `examples/ws_auto_reconnect`: Subscribe to events with auto-reconnect callbacks.
 - `examples/ws_call_service_for_entity`: Use helper `CallServiceForEntity` with brightness.
+
+## Helper examples
+
+- `examples/helpers_light_commands`: Use helper functions (`BuildEntityID`, `ParseEntityID`, `NewTurnLightOnCmd`, `NewTurnLightOffCmd`, `NewToggleLightCmd`, `NewServiceDataEntityID`).
 - `examples/helpers_decode_event_data`: Offline helper demo for generic `DecodeEventData`.
 
 ## Notes

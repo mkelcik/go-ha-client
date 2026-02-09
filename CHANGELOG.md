@@ -8,12 +8,22 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ### Added
 - Debug logging for REST and WebSocket requests/responses.
+- Runnable examples for REST and WebSocket flows under `examples/`.
+- Helper examples for service command builders and event payload decoding.
+- Extra tests for reconnect callbacks and panic-safe callback execution.
 
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.
 
+### Changed
+- Refactored HTTP request execution into smaller internal helpers.
+- Replaced reflection-based query parameter encoding with explicit builders.
+- Expanded README and examples documentation, including notes about blocking reconnect callbacks.
+
 ### Fixed
 - `NewClient` now falls back to `http.DefaultClient` when a nil HTTP client is provided.
+- WebSocket connect/close flow now guards against close/connect races.
+- WebSocket reconnect logic validates backoff inputs and restores subscriptions more reliably.
 
 ## [v2.0.0-beta.2]
 

@@ -6,7 +6,7 @@ https://developers.home-assistant.io/docs/api/rest
 It also includes WebSocket API client helpers based on:
 https://developers.home-assistant.io/docs/api/websocket
 
-Tested with home-assistant `core-2021.7.2`.
+The client follows official Home Assistant REST and WebSocket API docs.
 
 ### Requirements
 - Go `1.24.13+`
