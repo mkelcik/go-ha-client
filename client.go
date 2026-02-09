@@ -474,66 +474,63 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 	return c.doWithHeaders(ctx, method, endpoint, body, nil, bodyDecoder)
 }
 
-func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string, bodyDecoder func(reader io.Reader) error) (*int, error) {
-	var reqBody []byte
-	var err error
+func (c *Client) requestURL(endpoint string) string {
+	return fmt.Sprintf("%s%s", c.config.Host, endpoint)
+}
 
-	debugEnabled := isDebugEnabled(c.config.Logger, ctx)
-	if debugEnabled && body != nil {
-		reqBody, err = io.ReadAll(body)
-		if err != nil {
-			return nil, fmt.Errorf("reading request body for debug: %w", err)
-		}
-		body = bytes.NewReader(reqBody)
+func (c *Client) prepareRequestBodyForDebug(body io.Reader, debugEnabled bool) (io.Reader, []byte, error) {
+	if !debugEnabled || body == nil {
+		return body, nil, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("%s%s", c.config.Host, endpoint), body)
+	reqBody, err := io.ReadAll(body)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request `[%s] %s : %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
+		return nil, nil, fmt.Errorf("reading request body for debug: %w", err)
 	}
-	req.Header.Add(headerAuthorization, fmt.Sprintf("Bearer %s", c.config.Token))
-	for key, value := range headers {
-		req.Header.Set(key, value)
+	return bytes.NewReader(reqBody), reqBody, nil
+}
+
+func (c *Client) logDebugRequest(req *http.Request, reqBody []byte, debugEnabled bool) {
+	if !debugEnabled {
+		return
 	}
 
-	if debugEnabled {
-		if len(reqBody) > 0 {
-			c.config.Logger.Debug("request", "method", req.Method, "url", redactURL(req.URL.String()), "body", redactJSON(reqBody))
-		} else {
-			c.config.Logger.Debug("request", "method", req.Method, "url", redactURL(req.URL.String()))
-		}
+	if len(reqBody) > 0 {
+		c.config.Logger.Debug("request", "method", req.Method, "url", redactURL(req.URL.String()), "body", redactJSON(reqBody))
+		return
+	}
+	c.config.Logger.Debug("request", "method", req.Method, "url", redactURL(req.URL.String()))
+}
+
+func (c *Client) prepareResponseBodyForDebug(req *http.Request, resp *http.Response, debugEnabled bool) ([]byte, error) {
+	if !debugEnabled {
+		return nil, nil
 	}
 
-	resp, err := c.httpClient.Do(req)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error in request `[%s] %s`: %w", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
+		return nil, fmt.Errorf("reading response body for debug: %w", err)
 	}
-	defer resp.Body.Close()
+	c.config.Logger.Debug("response", "method", req.Method, "url", redactURL(req.URL.String()), "status", resp.StatusCode, "content-type", resp.Header.Get("Content-Type"), "body", redactJSON(respBody))
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+	return respBody, nil
+}
 
-	var respBody []byte
-	if debugEnabled {
-		respBody, err = io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("reading response body for debug: %w", err)
-		}
-		c.config.Logger.Debug("response", "method", req.Method, "url", redactURL(req.URL.String()), "status", resp.StatusCode, "content-type", resp.Header.Get("Content-Type"), "body", redactJSON(respBody))
-		resp.Body = io.NopCloser(bytes.NewReader(respBody))
-	}
-
+func handleResponseStatus(resp *http.Response, respBody []byte) error {
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
+		return ErrNotFound
 	}
 
 	if resp.StatusCode == http.StatusBadRequest {
 		br := badRequestResponse{}
 		if err := json.NewDecoder(resp.Body).Decode(&br); err == nil && br.Message != "" {
-			return nil, errors.New(br.Message)
+			return errors.New(br.Message)
 		}
-		return nil, fmt.Errorf("bad request (%d)", resp.StatusCode)
+		return fmt.Errorf("bad request (%d)", resp.StatusCode)
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, ErrUnauthorized
+		return ErrUnauthorized
 	}
 
 	if resp.StatusCode >= 300 {
@@ -544,14 +541,53 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 			body = body[:1024]
 		}
 		if len(body) > 0 {
-			return nil, fmt.Errorf("wrong response code `%d`: %s", resp.StatusCode, string(body))
+			return fmt.Errorf("wrong response code `%d`: %s", resp.StatusCode, string(body))
 		}
-		return nil, fmt.Errorf("wrong response code `%d`", resp.StatusCode)
+		return fmt.Errorf("wrong response code `%d`", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string, bodyDecoder func(reader io.Reader) error) (*int, error) {
+	var err error
+	debugEnabled := isDebugEnabled(c.config.Logger, ctx)
+	reqURL := c.requestURL(endpoint)
+
+	body, reqBody, err := c.prepareRequestBodyForDebug(body, debugEnabled)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request `[%s] %s : %w`", method, reqURL, err)
+	}
+	req.Header.Add(headerAuthorization, fmt.Sprintf("Bearer %s", c.config.Token))
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	c.logDebugRequest(req, reqBody, debugEnabled)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error in request `[%s] %s`: %w", method, reqURL, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := c.prepareResponseBodyForDebug(req, resp, debugEnabled)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := handleResponseStatus(resp, respBody); err != nil {
+		return nil, err
 	}
 
 	reader := resp.Body
 	if err := bodyDecoder(reader); err != nil {
-		return nil, fmt.Errorf("error decoding response body `[%s] %s: %w`", method, fmt.Sprintf("%s%s", c.config.Host, endpoint), err)
+		return nil, fmt.Errorf("error decoding response body `[%s] %s: %w`", method, reqURL, err)
 	}
 	return &resp.StatusCode, nil
 }
