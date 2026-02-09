@@ -31,7 +31,7 @@ go run ./examples/rest_ping
 
 ## Helper examples
 
-- `examples/helpers_light_commands`: Use helper functions (`BuildEntityID`, `ParseEntityID`, `NewTurnLightOnCmd`, `NewTurnLightOffCmd`, `NewToggleLightCmd`, `NewServiceDataEntityID`).
+- `examples/helpers_light_commands`: Use helper functions (`BuildEntityID`, `ParseEntityID`, `NewTurnOnCmd`, `NewTurnOffCmd`, `NewToggleCmd`, `NewTurnLightOnCmd`, `NewTurnLightOffCmd`, `NewToggleLightCmd`, `NewServiceDataEntityID`).
 - `examples/helpers_decode_event_data`: Offline helper demo for generic `DecodeEventData`.
 
 ## Notes

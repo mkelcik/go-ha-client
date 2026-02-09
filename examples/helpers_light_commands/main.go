@@ -33,11 +33,11 @@ func main() {
 	var cmd ha.DefaultServiceCmd
 	switch action {
 	case "on":
-		cmd = ha.NewTurnLightOnCmd(entityID)
+		cmd = ha.NewTurnOnCmd(ha.DomainLight, entityID)
 	case "off":
-		cmd = ha.NewTurnLightOffCmd(entityID)
+		cmd = ha.NewTurnOffCmd(ha.DomainLight, entityID)
 	case "toggle":
-		cmd = ha.NewToggleLightCmd(entityID)
+		cmd = ha.NewToggleCmd(ha.DomainLight, entityID)
 	default:
 		log.Fatalf("invalid lightAction %q (supported: on, off, toggle)", action)
 	}

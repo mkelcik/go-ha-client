@@ -142,6 +142,44 @@ func TestNewServiceDataEntityID(t *testing.T) {
 	}
 }
 
+func TestGenericServiceCommandHelpers(t *testing.T) {
+	t.Parallel()
+
+	on := NewTurnOnCmd("switch", "switch.kitchen")
+	if on.Domain != "switch" || on.Service != ServiceTurnOn || on.EntityID != "switch.kitchen" {
+		t.Fatalf("unexpected turn_on cmd: %#v", on)
+	}
+
+	off := NewTurnOffCmd("input_boolean", "input_boolean.night_mode")
+	if off.Domain != "input_boolean" || off.Service != ServiceTurnOff || off.EntityID != "input_boolean.night_mode" {
+		t.Fatalf("unexpected turn_off cmd: %#v", off)
+	}
+
+	toggle := NewToggleCmd("light", "light.kitchen")
+	if toggle.Domain != "light" || toggle.Service != ServiceToggle || toggle.EntityID != "light.kitchen" {
+		t.Fatalf("unexpected toggle cmd: %#v", toggle)
+	}
+}
+
+func TestLightHelpersDelegateToGenericHelpers(t *testing.T) {
+	t.Parallel()
+
+	on := NewTurnLightOnCmd("light.kitchen")
+	if on != NewTurnOnCmd(DomainLight, "light.kitchen") {
+		t.Fatalf("light turn_on helper diverges from generic helper")
+	}
+
+	off := NewTurnLightOffCmd("light.kitchen")
+	if off != NewTurnOffCmd(DomainLight, "light.kitchen") {
+		t.Fatalf("light turn_off helper diverges from generic helper")
+	}
+
+	toggle := NewToggleLightCmd("light.kitchen")
+	if toggle != NewToggleCmd(DomainLight, "light.kitchen") {
+		t.Fatalf("light toggle helper diverges from generic helper")
+	}
+}
+
 func TestBuildAndParseEntityID(t *testing.T) {
 	t.Parallel()
 

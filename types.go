@@ -250,27 +250,42 @@ type PlainText string
 
 // NewTurnLightOnCmd is helper for turning light on
 func NewTurnLightOnCmd(entityID string) DefaultServiceCmd {
-	return DefaultServiceCmd{
-		Service:  ServiceTurnOn,
-		Domain:   DomainLight,
-		EntityID: entityID,
-	}
+	return NewTurnOnCmd(DomainLight, entityID)
 }
 
 // NewTurnLightOffCmd is helper for turning light off
 func NewTurnLightOffCmd(entityID string) DefaultServiceCmd {
-	return DefaultServiceCmd{
-		Service:  ServiceTurnOff,
-		Domain:   DomainLight,
-		EntityID: entityID,
-	}
+	return NewTurnOffCmd(DomainLight, entityID)
 }
 
 // NewToggleLightCmd is helper for toggling light state.
 func NewToggleLightCmd(entityID string) DefaultServiceCmd {
+	return NewToggleCmd(DomainLight, entityID)
+}
+
+// NewTurnOnCmd is helper for turn_on service calls for any domain.
+func NewTurnOnCmd(domain, entityID string) DefaultServiceCmd {
+	return DefaultServiceCmd{
+		Service:  ServiceTurnOn,
+		Domain:   domain,
+		EntityID: entityID,
+	}
+}
+
+// NewTurnOffCmd is helper for turn_off service calls for any domain.
+func NewTurnOffCmd(domain, entityID string) DefaultServiceCmd {
+	return DefaultServiceCmd{
+		Service:  ServiceTurnOff,
+		Domain:   domain,
+		EntityID: entityID,
+	}
+}
+
+// NewToggleCmd is helper for toggle service calls for any domain.
+func NewToggleCmd(domain, entityID string) DefaultServiceCmd {
 	return DefaultServiceCmd{
 		Service:  ServiceToggle,
-		Domain:   DomainLight,
+		Domain:   domain,
 		EntityID: entityID,
 	}
 }
