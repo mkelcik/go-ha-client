@@ -30,6 +30,7 @@ go run ./examples/rest_ping
 - `examples/ws_wait_for_state_equals`: Wait until an entity reaches a concrete state string (`WaitForStateEquals`).
 - `examples/ws_auto_reconnect`: Subscribe to events with auto-reconnect callbacks.
 - `examples/ws_call_service_for_entity`: Use helper `CallServiceForEntity` with brightness.
+- `examples/ws_watch_call_service_events`: Watch `call_service` events and decode with `WSEvent.CallServiceEvent`.
 
 ## Helper examples
 
