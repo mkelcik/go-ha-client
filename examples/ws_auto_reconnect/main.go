@@ -4,41 +4,29 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	ha "github.com/mkelcik/go-ha-client/v2"
 )
 
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Fatalf("missing required environment variable %s", key)
-	}
-	return v
-}
-
-func envOrDefault(key, fallback string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	return v
-}
+const (
+	// Replace with values from your Home Assistant instance.
+	haHost    = "http://homeassistant.local:8123"
+	haToken   = "YOUR_LONG_LIVED_TOKEN"
+	eventType = ha.EventTypeStateChanged
+)
 
 func main() {
-	host := mustEnv("HA_HOST")
-	token := mustEnv("HA_TOKEN")
-	eventType := envOrDefault("HA_EVENT_TYPE", ha.EventTypeStateChanged)
-
-	client, err := ha.NewClient(host,
-		ha.WithToken(token),
+	// Base HTTP client used by websocket client as well.
+	client, err := ha.NewClient(haHost,
+		ha.WithToken(haToken),
 		ha.WithTimeout(30*time.Second),
 	)
 	if err != nil {
 		log.Fatalf("create client: %v", err)
 	}
 
+	// Enable reconnect strategy and optional reconnect callbacks.
 	ws := client.WS(
 		ha.WithAutoReconnect(true),
 		ha.WithMaxRetries(0),
@@ -51,17 +39,20 @@ func main() {
 		}),
 	)
 
+	// Open websocket and perform Home Assistant auth handshake.
 	if err := ws.Connect(context.Background()); err != nil {
 		log.Fatalf("ws connect failed: %v", err)
 	}
 	defer ws.Close()
 
+	// Subscribe to selected event type.
 	sub, err := ws.SubscribeEvents(context.Background(), eventType)
 	if err != nil {
 		log.Fatalf("subscribe failed: %v", err)
 	}
 	defer sub.Unsubscribe(context.Background())
 
+	// Read events until subscription is closed.
 	fmt.Printf("Listening for %q events with auto reconnect enabled...\n", eventType)
 	for {
 		select {

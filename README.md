@@ -112,6 +112,8 @@ Recommended first runs:
 - [`examples/ws_switch_control`](examples/ws_switch_control) - turn on/off/toggle a switch over WebSocket.
 - [`examples/ws_watch_light_state`](examples/ws_watch_light_state) - watch light state changes in real time.
 - [`examples/rest_camera_snapshot`](examples/rest_camera_snapshot) - fetch and save camera JPEG.
+- [`examples/helpers_light_commands`](examples/helpers_light_commands) - quick tour of command/entity helper functions.
+- [`examples/helpers_decode_event_data`](examples/helpers_decode_event_data) - simple `DecodeEventData` helper demo (offline).
 
 The `examples` folder also includes:
 - Template rendering

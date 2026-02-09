@@ -4,63 +4,49 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	ha "github.com/mkelcik/go-ha-client/v2"
 )
 
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Fatalf("missing required environment variable %s", key)
-	}
-	return v
-}
-
-func envOrDefault(key, fallback string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	return v
-}
+const (
+	// Replace with values from your Home Assistant instance.
+	haHost        = "http://homeassistant.local:8123"
+	haToken       = "YOUR_LONG_LIVED_TOKEN"
+	lightEntityID = "light.kitchen"
+	watchTimeout  = 120 * time.Second
+)
 
 func main() {
-	host := mustEnv("HA_HOST")
-	token := mustEnv("HA_TOKEN")
-	lightEntityID := mustEnv("HA_LIGHT_ENTITY_ID")
-	timeoutSeconds := envOrDefault("HA_WATCH_TIMEOUT_SECONDS", "120")
-
-	client, err := ha.NewClient(host,
-		ha.WithToken(token),
+	// Create base client.
+	client, err := ha.NewClient(haHost,
+		ha.WithToken(haToken),
 		ha.WithTimeout(30*time.Second),
 	)
 	if err != nil {
 		log.Fatalf("create client: %v", err)
 	}
 
+	// Connect websocket and authenticate.
 	ws := client.WS()
 	if err := ws.Connect(context.Background()); err != nil {
 		log.Fatalf("ws connect failed: %v", err)
 	}
 	defer ws.Close()
 
+	// Subscribe only to state_changed events for one entity.
 	sub, err := ws.SubscribeStateChanged(context.Background(), lightEntityID)
 	if err != nil {
 		log.Fatalf("subscribe failed: %v", err)
 	}
 	defer sub.Unsubscribe(context.Background())
 
-	duration, err := time.ParseDuration(timeoutSeconds + "s")
-	if err != nil {
-		log.Fatalf("invalid HA_WATCH_TIMEOUT_SECONDS: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	// Stop watching after configured timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), watchTimeout)
 	defer cancel()
 
-	fmt.Printf("Watching state changes for %s (timeout %s)\n", lightEntityID, duration)
+	// Consume events/errors from subscription channels.
+	fmt.Printf("Watching state changes for %s (timeout %s)\n", lightEntityID, watchTimeout)
 	for {
 		select {
 		case <-ctx.Done():
@@ -75,6 +61,7 @@ func main() {
 				fmt.Println("subscription closed")
 				return
 			}
+			// Decode the event payload to strongly-typed state_changed data.
 			data, ok, err := ev.StateChanged()
 			if err != nil || !ok || data.NewState == nil {
 				continue

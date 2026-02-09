@@ -4,64 +4,49 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	ha "github.com/mkelcik/go-ha-client/v2"
 )
 
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Fatalf("missing required environment variable %s", key)
-	}
-	return v
-}
-
-func envOrDefault(key, fallback string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	return v
-}
+const (
+	// Replace with values from your Home Assistant instance.
+	haHost        = "http://homeassistant.local:8123"
+	haToken       = "YOUR_LONG_LIVED_TOKEN"
+	lightEntityID = "light.kitchen"
+	targetState   = "on"
+	waitTimeout   = 120 * time.Second
+)
 
 func main() {
-	host := mustEnv("HA_HOST")
-	token := mustEnv("HA_TOKEN")
-	entityID := mustEnv("HA_LIGHT_ENTITY_ID")
-	targetState := envOrDefault("HA_TARGET_STATE", "on")
-	timeoutSeconds := envOrDefault("HA_WAIT_TIMEOUT_SECONDS", "120")
-
-	client, err := ha.NewClient(host,
-		ha.WithToken(token),
+	// Create base client.
+	client, err := ha.NewClient(haHost,
+		ha.WithToken(haToken),
 		ha.WithTimeout(30*time.Second),
 	)
 	if err != nil {
 		log.Fatalf("create client: %v", err)
 	}
 
+	// Connect websocket and authenticate.
 	ws := client.WS()
 	if err := ws.Connect(context.Background()); err != nil {
 		log.Fatalf("ws connect failed: %v", err)
 	}
 	defer ws.Close()
 
-	duration, err := time.ParseDuration(timeoutSeconds + "s")
-	if err != nil {
-		log.Fatalf("invalid HA_WAIT_TIMEOUT_SECONDS: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	// Overall timeout for waiting on target state.
+	ctx, cancel := context.WithTimeout(context.Background(), waitTimeout)
 	defer cancel()
 
-	fmt.Printf("Waiting for %s to become %q...\n", entityID, targetState)
-	err = ws.WaitForState(ctx, entityID, func(s ha.State) bool {
+	// Wait until callback returns true for a new state.
+	fmt.Printf("Waiting for %s to become %q...\n", lightEntityID, targetState)
+	err = ws.WaitForState(ctx, lightEntityID, func(s ha.State) bool {
 		return s.State == targetState
 	})
 	if err != nil {
 		log.Fatalf("wait for state failed: %v", err)
 	}
 
-	fmt.Printf("Entity %s reached target state %q\n", entityID, targetState)
+	fmt.Printf("Entity %s reached target state %q\n", lightEntityID, targetState)
 }

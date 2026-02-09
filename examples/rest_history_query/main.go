@@ -4,60 +4,49 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"strconv"
 	"time"
 
 	ha "github.com/mkelcik/go-ha-client/v2"
 )
 
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Fatalf("missing required environment variable %s", key)
-	}
-	return v
-}
-
-func envOrDefault(key, fallback string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	return v
-}
+const (
+	// Replace with values from your Home Assistant instance.
+	haHost          = "http://homeassistant.local:8123"
+	haToken         = "YOUR_LONG_LIVED_TOKEN"
+	historyHours    = 24
+	historyEntityID = "light.kitchen"
+)
 
 func main() {
-	host := mustEnv("HA_HOST")
-	token := mustEnv("HA_TOKEN")
-	entityID := mustEnv("HA_ENTITY_ID")
-
-	hoursRaw := envOrDefault("HA_HISTORY_HOURS", "24")
-	hours, err := strconv.Atoi(hoursRaw)
-	if err != nil || hours <= 0 {
-		log.Fatalf("invalid HA_HISTORY_HOURS %q", hoursRaw)
+	// Basic validation for demo constants.
+	if historyHours <= 0 {
+		log.Fatalf("invalid historyHours %d", historyHours)
 	}
 
-	client, err := ha.NewClient(host,
-		ha.WithToken(token),
+	// Create REST client used for history API.
+	client, err := ha.NewClient(haHost,
+		ha.WithToken(haToken),
 		ha.WithTimeout(30*time.Second),
 	)
 	if err != nil {
 		log.Fatalf("create client: %v", err)
 	}
 
+	// Build query: last N hours, selected entity, minimal payload.
 	query := ha.NewHistoryQuery().
-		WithStart(time.Now().Add(-time.Duration(hours) * time.Hour)).
-		WithEntities(entityID).
+		WithStart(time.Now().Add(-time.Duration(historyHours) * time.Hour)).
+		WithEntities(historyEntityID).
 		WithMinimalResponse(true)
 
+	// Timeout protects from hanging HTTP calls.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Fetch history blocks from Home Assistant.
 	history, err := client.GetHistory(ctx, query)
 	if err != nil {
 		log.Fatalf("get history failed: %v", err)
 	}
 
-	fmt.Printf("History blocks for %s in last %d hours: %d\n", entityID, hours, len(history))
+	fmt.Printf("History blocks for %s in last %d hours: %d\n", historyEntityID, historyHours, len(history))
 }
