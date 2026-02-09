@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -387,19 +386,51 @@ func createQueryString(startTime time.Time, filter interface{}) string {
 }
 
 func createParamMap(filter interface{}) []string {
-	queryParams := make([]string, 0, 10)
-	v := reflect.ValueOf(filter).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		paramName := v.Type().Field(i).Tag.Get("json")
-		if paramName != "" && !v.Field(i).IsZero() {
-			fieldValue := v.Field(i).Interface()
-			value := fmt.Sprint(fieldValue)
-			if t, ok := fieldValue.(time.Time); ok {
-				value = t.Format(filterDateFormat)
-			}
+	switch f := filter.(type) {
+	case *StateChangesFilter:
+		return createStateChangesParams(f)
+	case *LogbookFilter:
+		return createLogbookParams(f)
+	default:
+		return nil
+	}
+}
 
-			queryParams = append(queryParams, fmt.Sprintf("%s=%s", paramName, url.QueryEscape(value)))
-		}
+func createStateChangesParams(filter *StateChangesFilter) []string {
+	if filter == nil {
+		return nil
+	}
+
+	queryParams := make([]string, 0, 5)
+	if !filter.EndTime.IsZero() {
+		queryParams = append(queryParams, fmt.Sprintf("end_time=%s", url.QueryEscape(filter.EndTime.Format(filterDateFormat))))
+	}
+	if filter.FilterEntityID != "" {
+		queryParams = append(queryParams, fmt.Sprintf("filter_entity_id=%s", url.QueryEscape(filter.FilterEntityID)))
+	}
+	if filter.MinimalResponse {
+		queryParams = append(queryParams, "minimal_response=true")
+	}
+	if filter.NoAttributes {
+		queryParams = append(queryParams, "no_attributes=true")
+	}
+	if filter.SignificantChangesOnly {
+		queryParams = append(queryParams, "significant_changes_only=true")
+	}
+	return queryParams
+}
+
+func createLogbookParams(filter *LogbookFilter) []string {
+	if filter == nil {
+		return nil
+	}
+
+	queryParams := make([]string, 0, 2)
+	if !filter.EndTime.IsZero() {
+		queryParams = append(queryParams, fmt.Sprintf("end_time=%s", url.QueryEscape(filter.EndTime.Format(filterDateFormat))))
+	}
+	if filter.EntityID != "" {
+		queryParams = append(queryParams, fmt.Sprintf("entity=%s", url.QueryEscape(filter.EntityID)))
 	}
 	return queryParams
 }

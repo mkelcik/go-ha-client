@@ -57,6 +57,31 @@ func TestCreateQueryStringWithParams(t *testing.T) {
 	}
 }
 
+func TestLogbookFilterStringWithParams(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2023, 3, 1, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2023, 3, 2, 10, 30, 0, 0, time.UTC)
+	filter := &LogbookFilter{
+		StartTime: start,
+		EndTime:   end,
+		EntityID:  "light.kitchen",
+	}
+
+	got := filter.String()
+	if !strings.HasPrefix(got, "/"+start.Format(filterDateFormat)+"?") {
+		t.Fatalf("unexpected prefix: %s", got)
+	}
+
+	escapedEnd := url.QueryEscape(end.Format(filterDateFormat))
+	if !strings.Contains(got, "end_time="+escapedEnd) {
+		t.Fatalf("missing end_time in %q", got)
+	}
+	if !strings.Contains(got, "entity=light.kitchen") {
+		t.Fatalf("missing entity in %q", got)
+	}
+}
+
 func TestServiceMapUnmarshalList(t *testing.T) {
 	t.Parallel()
 
