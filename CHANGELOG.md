@@ -18,6 +18,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Typed WebSocket event helper `WSEvent.CallServiceEvent` for `call_service` payload decoding.
 - `NewClientWithDefaults(host, token)` shortcut for beginner-friendly client setup.
 - New example `examples/ws_wait_for_state_equals` for `WaitForStateEquals`.
+- New example `examples/ws_watch_selected_entities` for `SubscribeStateChangedMany`.
 
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.
