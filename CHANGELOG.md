@@ -17,6 +17,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Generic service command helpers `NewTurnOnCmd`, `NewTurnOffCmd`, and `NewToggleCmd`.
 - Typed WebSocket event helper `WSEvent.CallServiceEvent` for `call_service` payload decoding.
 - `NewClientWithDefaults(host, token)` shortcut for beginner-friendly client setup.
+- New example `examples/ws_wait_for_state_equals` for `WaitForStateEquals`.
 
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.

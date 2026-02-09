@@ -124,7 +124,7 @@ Recommended first runs:
 The `examples` folder also includes:
 - Template rendering
 - History query builder usage
-- Wait-for-state helper usage
+- Wait-for-state helper usage (`WaitForState` and `WaitForStateEquals`)
 - Auto-reconnect WebSocket setup
 - CallServiceForEntity helper usage (REST and WebSocket)
 - State-changed subscription helpers for single or multiple entities

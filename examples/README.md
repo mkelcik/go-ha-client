@@ -25,7 +25,8 @@ go run ./examples/rest_ping
 
 - `examples/ws_switch_control`: Turn on/off/toggle a switch over WebSocket.
 - `examples/ws_watch_light_state`: Watch `state_changed` events for one light.
-- `examples/ws_wait_for_state`: Wait until an entity reaches target state (`WaitForState` / `WaitForStateEquals`).
+- `examples/ws_wait_for_state`: Wait until an entity reaches target state with custom predicate (`WaitForState`).
+- `examples/ws_wait_for_state_equals`: Wait until an entity reaches a concrete state string (`WaitForStateEquals`).
 - `examples/ws_auto_reconnect`: Subscribe to events with auto-reconnect callbacks.
 - `examples/ws_call_service_for_entity`: Use helper `CallServiceForEntity` with brightness.
 
