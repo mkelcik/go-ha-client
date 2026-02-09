@@ -205,6 +205,15 @@ func WithMaxRetries(n int) WSOption {
 // WithReconnectBackoff sets the min and max backoff durations.
 func WithReconnectBackoff(min, max time.Duration) WSOption {
 	return func(c *WSClient) {
+		if min <= 0 {
+			min = time.Second
+		}
+		if max <= 0 {
+			max = 60 * time.Second
+		}
+		if max < min {
+			max = min
+		}
 		c.reconnect.MinBackoff = min
 		c.reconnect.MaxBackoff = max
 	}
