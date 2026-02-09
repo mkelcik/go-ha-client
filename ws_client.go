@@ -66,6 +66,13 @@ type StateChangedEventData struct {
 	OldState *State `json:"old_state"`
 }
 
+// CallServiceEventData represents the payload for call_service events.
+type CallServiceEventData struct {
+	Domain      string                 `json:"domain"`
+	Service     string                 `json:"service"`
+	ServiceData map[string]interface{} `json:"service_data"`
+}
+
 // StateChanged returns state_changed data when available.
 // ok=false means this event doesn't carry state_changed data.
 func (e WSEvent) StateChanged() (StateChangedEventData, bool, error) {
@@ -81,6 +88,28 @@ func (e WSEvent) StateChanged() (StateChangedEventData, bool, error) {
 	}
 	if data.EntityID == "" || data.NewState == nil {
 		return StateChangedEventData{}, false, nil
+	}
+	return data, true, nil
+}
+
+// CallServiceEvent returns call_service data when available.
+// ok=false means this event doesn't carry call_service data.
+func (e WSEvent) CallServiceEvent() (CallServiceEventData, bool, error) {
+	if e.EventType != EventTypeCallService {
+		return CallServiceEventData{}, false, nil
+	}
+	if len(e.Data) == 0 {
+		return CallServiceEventData{}, false, nil
+	}
+	var data CallServiceEventData
+	if err := json.Unmarshal(e.Data, &data); err != nil {
+		return CallServiceEventData{}, false, err
+	}
+	if data.Domain == "" || data.Service == "" {
+		return CallServiceEventData{}, false, nil
+	}
+	if data.ServiceData == nil {
+		data.ServiceData = map[string]interface{}{}
 	}
 	return data, true, nil
 }

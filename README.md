@@ -126,6 +126,7 @@ The `examples` folder also includes:
 ### WebSocket notes
 - `WithOnReconnect` and `WithOnReconnectError` callbacks are called synchronously from the reconnect loop.
 - Keep those callbacks short and non-blocking (offload heavy work to another goroutine if needed).
+- Use typed event helpers (`WSEvent.StateChanged`, `WSEvent.CallServiceEvent`) to avoid manual payload casting.
 
 ### Error handling
 Use sentinel errors with `errors.Is`:

@@ -15,6 +15,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - WebSocket helper `WaitForStateEquals` for simple state waits without predicate boilerplate.
 - WebSocket helper `SubscribeStateChangedMany` for filtering multiple entities in one subscription.
 - Generic service command helpers `NewTurnOnCmd`, `NewTurnOffCmd`, and `NewToggleCmd`.
+- Typed WebSocket event helper `WSEvent.CallServiceEvent` for `call_service` payload decoding.
 
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.

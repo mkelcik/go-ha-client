@@ -826,6 +826,45 @@ func TestWSEventStateChanged(t *testing.T) {
 	}
 }
 
+func TestWSEventCallServiceEvent(t *testing.T) {
+	t.Parallel()
+
+	ev := WSEvent{
+		EventType: EventTypeCallService,
+		Data: json.RawMessage(`{
+			"domain":"light",
+			"service":"turn_on",
+			"service_data":{"entity_id":"light.kitchen","brightness":180}
+		}`),
+	}
+
+	got, ok, err := ev.CallServiceEvent()
+	if err != nil {
+		t.Fatalf("call service event: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected ok=true")
+	}
+	if got.Domain != "light" || got.Service != "turn_on" {
+		t.Fatalf("unexpected call_service payload: %#v", got)
+	}
+	if got.ServiceData["entity_id"] != "light.kitchen" {
+		t.Fatalf("unexpected service_data: %#v", got.ServiceData)
+	}
+}
+
+func TestWSEventCallServiceEventNonCallServiceEvent(t *testing.T) {
+	t.Parallel()
+
+	ev := WSEvent{
+		EventType: EventTypeStateChanged,
+		Data:      json.RawMessage(`{"domain":"light","service":"turn_on"}`),
+	}
+	if _, ok, err := ev.CallServiceEvent(); err != nil || ok {
+		t.Fatalf("expected ok=false err=nil, got ok=%t err=%v", ok, err)
+	}
+}
+
 func TestWSEventStateChangedNonStateEvent(t *testing.T) {
 	t.Parallel()
 
