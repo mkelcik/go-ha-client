@@ -20,6 +20,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - New example `examples/ws_wait_for_state_equals` for `WaitForStateEquals`.
 - New example `examples/ws_watch_selected_entities` for `SubscribeStateChangedMany`.
 - New example `examples/ws_watch_call_service_events` for typed `WSEvent.CallServiceEvent`.
+- New example `examples/rest_ping_defaults` for `NewClientWithDefaults`.
 
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.

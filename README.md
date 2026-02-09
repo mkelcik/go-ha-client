@@ -114,6 +114,7 @@ Ready-to-run examples for beginners are in [`examples/`](examples/README.md).
 
 Recommended first runs:
 - [`examples/rest_ping`](examples/rest_ping) - check connection and print instance info.
+- [`examples/rest_ping_defaults`](examples/rest_ping_defaults) - shortest startup with `NewClientWithDefaults`.
 - [`examples/rest_switch_control`](examples/rest_switch_control) - turn on/off/toggle a switch over REST.
 - [`examples/ws_switch_control`](examples/ws_switch_control) - turn on/off/toggle a switch over WebSocket.
 - [`examples/ws_watch_light_state`](examples/ws_watch_light_state) - watch light state changes in real time.

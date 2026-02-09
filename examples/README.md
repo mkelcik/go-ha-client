@@ -16,6 +16,7 @@ go run ./examples/rest_ping
 ## REST examples
 
 - `examples/rest_ping`: Ping Home Assistant and print basic config info.
+- `examples/rest_ping_defaults`: Ping Home Assistant using `NewClientWithDefaults`.
 - `examples/rest_switch_control`: Turn on/off/toggle a switch over REST using `CallServiceForEntity`.
 - `examples/rest_camera_snapshot`: Download camera JPEG and save it to file.
 - `examples/rest_render_template`: Render a Home Assistant template.
