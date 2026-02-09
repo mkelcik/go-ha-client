@@ -120,7 +120,7 @@ The `examples` folder also includes:
 - History query builder usage
 - Wait-for-state helper usage
 - Auto-reconnect WebSocket setup
-- CallServiceForEntity helper usage
+- CallServiceForEntity helper usage (REST and WebSocket)
 
 ### WebSocket notes
 - `WithOnReconnect` and `WithOnReconnectError` callbacks are called synchronously from the reconnect loop.

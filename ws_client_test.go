@@ -513,6 +513,84 @@ func TestWSWaitForState(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
+func TestWSWaitForStateEquals(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		subReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&subReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":      subReq["id"],
+			"type":    "result",
+			"success": true,
+			"result":  nil,
+		})
+
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":   subReq["id"],
+			"type": "event",
+			"event": map[string]interface{}{
+				"event_type": "state_changed",
+				"data": map[string]interface{}{
+					"entity_id": "light.kitchen",
+					"new_state": map[string]interface{}{"state": "off"},
+				},
+			},
+		})
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":   subReq["id"],
+			"type": "event",
+			"event": map[string]interface{}{
+				"event_type": "state_changed",
+				"data": map[string]interface{}{
+					"entity_id": "light.kitchen",
+					"new_state": map[string]interface{}{"state": "on"},
+				},
+			},
+		})
+
+		unsubReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&unsubReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		if unsubReq["type"] != "unsubscribe_events" {
+			reportHandlerErr(errCh, errors.New("expected unsubscribe_events"))
+			return
+		}
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":      unsubReq["id"],
+			"type":    "result",
+			"success": true,
+			"result":  true,
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := ws.WaitForStateEquals(ctx, "light.kitchen", "on"); err != nil {
+		t.Fatalf("wait for state equals: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
 func TestWSCallServiceForEntity(t *testing.T) {
 	t.Parallel()
 

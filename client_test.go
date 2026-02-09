@@ -722,6 +722,73 @@ func TestCallServiceWithResponse(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
+func TestCallServiceForEntity(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/services/light/turn_on" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected content-type: %s", ct))
+			return
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			reportHandlerErr(errCh, fmt.Errorf("read body: %w", err))
+			return
+		}
+		raw := string(body)
+		if !strings.Contains(raw, `"entity_id":"light.kitchen"`) {
+			reportHandlerErr(errCh, fmt.Errorf("missing entity_id in body: %s", raw))
+			return
+		}
+		if strings.Contains(raw, `"entity_id":"light.other"`) {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected stale entity_id in body: %s", raw))
+			return
+		}
+		if !strings.Contains(raw, `"brightness":200`) {
+			reportHandlerErr(errCh, fmt.Errorf("missing brightness in body: %s", raw))
+			return
+		}
+
+		_ = json.NewEncoder(w).Encode(StateEntities{
+			{EntityID: "light.kitchen", State: "on"},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(t, server.URL)
+	states, err := client.CallServiceForEntity(context.Background(), "light", "turn_on", "light.kitchen", map[string]interface{}{
+		"brightness": 200,
+		"entity_id":  "light.other",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(states) != 1 || states[0].EntityID != "light.kitchen" {
+		t.Fatalf("unexpected states: %#v", states)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestCallServiceForEntityEmptyEntityID(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, "http://localhost")
+	_, err := client.CallServiceForEntity(context.Background(), "light", "turn_on", "", nil)
+	if !errors.Is(err, ErrEmptyEntityID) {
+		t.Fatalf("expected ErrEmptyEntityID, got: %v", err)
+	}
+}
+
 func TestRenderTemplate(t *testing.T) {
 	t.Parallel()
 

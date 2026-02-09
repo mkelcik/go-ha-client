@@ -314,6 +314,33 @@ func (c *Client) CallService(ctx context.Context, cmd DefaultServiceCmd) (StateE
 	return states, c.doPostRequestJson(ctx, fmt.Sprintf(epCallService, url.PathEscape(cmd.Domain), url.PathEscape(cmd.Service)), cmd.Reader(), &states)
 }
 
+// CallServiceForEntity calls a service with service_data.entity_id prefilled.
+func (c *Client) CallServiceForEntity(ctx context.Context, domain, service, entityID string, data map[string]interface{}) (StateEntities, error) {
+	states := StateEntities{}
+	if entityID == "" {
+		return states, ErrEmptyEntityID
+	}
+	if service == "" {
+		return states, ErrEmptyService
+	}
+	if domain == "" {
+		return states, ErrEmptyDomain
+	}
+
+	merged := make(map[string]interface{}, len(data)+1)
+	for k, v := range data {
+		merged[k] = v
+	}
+	merged["entity_id"] = entityID
+
+	b, err := json.Marshal(merged)
+	if err != nil {
+		return states, fmt.Errorf("error creating service call request body: %w", err)
+	}
+
+	return states, c.doPostRequestJson(ctx, fmt.Sprintf(epCallService, url.PathEscape(domain), url.PathEscape(service)), bytes.NewBuffer(b), &states)
+}
+
 // CallServiceWithResponse calls a service and returns the response.
 func (c *Client) CallServiceWithResponse(ctx context.Context, domain, service string, body io.Reader) (ServiceCallResponse, error) {
 	response := ServiceCallResponse{}

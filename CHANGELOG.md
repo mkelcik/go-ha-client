@@ -11,6 +11,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Runnable examples for REST and WebSocket flows under `examples/`.
 - Helper examples for service command builders and event payload decoding.
 - Extra tests for reconnect callbacks and panic-safe callback execution.
+- REST helper `CallServiceForEntity` for common entity-targeted service calls.
+- WebSocket helper `WaitForStateEquals` for simple state waits without predicate boilerplate.
 
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.

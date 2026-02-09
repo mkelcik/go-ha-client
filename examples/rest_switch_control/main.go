@@ -49,11 +49,7 @@ func main() {
 	defer cancel()
 
 	// Call switch service via REST API.
-	_, err = client.CallService(ctx, ha.DefaultServiceCmd{
-		Domain:   ha.DomainSwitch,
-		Service:  service,
-		EntityID: switchEntityID,
-	})
+	_, err = client.CallServiceForEntity(ctx, ha.DomainSwitch, service, switchEntityID, nil)
 	if err != nil {
 		log.Fatalf("call service failed: %v", err)
 	}

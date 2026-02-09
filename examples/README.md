@@ -16,7 +16,7 @@ go run ./examples/rest_ping
 ## REST examples
 
 - `examples/rest_ping`: Ping Home Assistant and print basic config info.
-- `examples/rest_switch_control`: Turn on/off/toggle a switch over REST.
+- `examples/rest_switch_control`: Turn on/off/toggle a switch over REST using `CallServiceForEntity`.
 - `examples/rest_camera_snapshot`: Download camera JPEG and save it to file.
 - `examples/rest_render_template`: Render a Home Assistant template.
 - `examples/rest_history_query`: Query entity history with `HistoryQuery` builder.
@@ -25,7 +25,7 @@ go run ./examples/rest_ping
 
 - `examples/ws_switch_control`: Turn on/off/toggle a switch over WebSocket.
 - `examples/ws_watch_light_state`: Watch `state_changed` events for one light.
-- `examples/ws_wait_for_state`: Wait until an entity reaches target state.
+- `examples/ws_wait_for_state`: Wait until an entity reaches target state (`WaitForState` / `WaitForStateEquals`).
 - `examples/ws_auto_reconnect`: Subscribe to events with auto-reconnect callbacks.
 - `examples/ws_call_service_for_entity`: Use helper `CallServiceForEntity` with brightness.
 

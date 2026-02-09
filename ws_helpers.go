@@ -69,6 +69,13 @@ func (c *WSClient) WaitForState(ctx context.Context, entityID string, predicate 
 	}
 }
 
+// WaitForStateEquals blocks until the entity state matches the target state string.
+func (c *WSClient) WaitForStateEquals(ctx context.Context, entityID, targetState string) error {
+	return c.WaitForState(ctx, entityID, func(s State) bool {
+		return s.State == targetState
+	})
+}
+
 // CallServiceForEntity calls a service with service_data.entity_id prefilled.
 func (c *WSClient) CallServiceForEntity(ctx context.Context, domain, service, entityID string, data map[string]interface{}) (WSCallServiceResult, error) {
 	result := WSCallServiceResult{}
