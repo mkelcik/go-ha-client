@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -72,6 +74,141 @@ func TestWSConnectAndPing(t *testing.T) {
 	if err := ws.Ping(context.Background()); err != nil {
 		t.Fatalf("ping: %v", err)
 	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSCloseDuringConnectHandshake(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	authReceived := make(chan struct{})
+	releaseAuth := make(chan struct{})
+
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+
+		authReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&authReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		close(authReceived)
+
+		<-releaseAuth
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+
+	connectErrCh := make(chan error, 1)
+	go func() {
+		connectErrCh <- ws.Connect(context.Background())
+	}()
+
+	select {
+	case <-authReceived:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for auth request")
+	}
+
+	if err := ws.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	close(releaseAuth)
+
+	select {
+	case err := <-connectErrCh:
+		if !errors.Is(err, ErrWSClosed) {
+			t.Fatalf("expected ErrWSClosed from connect, got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for connect to finish")
+	}
+
+	if ws.IsConnected() {
+		t.Fatalf("expected disconnected client after close")
+	}
+	if err := ws.Connect(context.Background()); !errors.Is(err, ErrWSClosed) {
+		t.Fatalf("expected ErrWSClosed on reconnect attempt, got: %v", err)
+	}
+
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSConnectConcurrentCallsSingleHandshake(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	authReceived := make(chan struct{})
+	releaseAuth := make(chan struct{})
+	var authOnce sync.Once
+	var connCount int32
+
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+		atomic.AddInt32(&connCount, 1)
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		authReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&authReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		authOnce.Do(func() {
+			close(authReceived)
+		})
+
+		<-releaseAuth
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+		time.Sleep(100 * time.Millisecond)
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	t.Cleanup(func() { _ = ws.Close() })
+
+	const workers = 8
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			errs <- ws.Connect(ctx)
+		}()
+	}
+
+	close(start)
+	select {
+	case <-authReceived:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for first auth request")
+	}
+	close(releaseAuth)
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("connect returned error: %v", err)
+		}
+	}
+
+	if got := atomic.LoadInt32(&connCount); got != 1 {
+		t.Fatalf("expected exactly one handshake connection, got %d", got)
+	}
+	if !ws.IsConnected() {
+		t.Fatalf("expected connected websocket client")
+	}
+
 	assertNoHandlerErr(t, errCh)
 }
 

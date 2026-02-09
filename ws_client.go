@@ -170,12 +170,14 @@ type WSClient struct {
 
 	mu          sync.RWMutex
 	conn        *websocket.Conn
+	pendingConn *websocket.Conn
 	pending     map[int64]chan wsPendingResult
 	pendingSubs map[int64]*WSSubscription
 	subs        map[int64]*WSSubscription
 
-	writeMu sync.Mutex
-	nextID  int64
+	connectMu sync.Mutex
+	writeMu   sync.Mutex
+	nextID    int64
 
 	// Reconnect state
 	reconnect     ReconnectConfig
@@ -264,67 +266,10 @@ func (c *Client) WS(opts ...WSOption) *WSClient {
 
 // Connect establishes the WebSocket connection; call it once and avoid concurrent calls.
 func (c *WSClient) Connect(ctx context.Context) error {
-	if c.closed.Load() {
-		return ErrWSClosed
-	}
-	c.mu.RLock()
-	if c.conn != nil {
-		c.mu.RUnlock()
-		return nil
-	}
-	c.mu.RUnlock()
+	c.connectMu.Lock()
+	defer c.connectMu.Unlock()
 
-	wsURL, err := websocketURL(c.config.Host)
-	if err != nil {
-		return err
-	}
-
-	conn, _, err := c.dialer.DialContext(ctx, wsURL, nil)
-	if err != nil {
-		return err
-	}
-
-	msg := wsIncomingMessage{}
-	if err := conn.ReadJSON(&msg); err != nil {
-		_ = conn.Close()
-		return err
-	}
-	if msg.Type != "auth_required" {
-		_ = conn.Close()
-		return fmt.Errorf("unexpected ws handshake message: %s", msg.Type)
-	}
-
-	if err := conn.WriteJSON(map[string]interface{}{
-		"type":         "auth",
-		"access_token": c.config.Token,
-	}); err != nil {
-		_ = conn.Close()
-		return err
-	}
-
-	msg = wsIncomingMessage{}
-	if err := conn.ReadJSON(&msg); err != nil {
-		_ = conn.Close()
-		return err
-	}
-	if msg.Type != "auth_ok" {
-		_ = conn.Close()
-		if msg.Type == "auth_invalid" {
-			return fmt.Errorf("%w: %s", ErrWSAuthFailed, msg.Message)
-		}
-		return fmt.Errorf("unexpected ws auth message: %s", msg.Type)
-	}
-
-	c.mu.Lock()
-	c.conn = conn
-	c.pending = make(map[int64]chan wsPendingResult)
-	c.pendingSubs = make(map[int64]*WSSubscription)
-	c.subs = make(map[int64]*WSSubscription)
-	atomic.StoreInt64(&c.nextID, 0)
-	c.mu.Unlock()
-
-	go c.readLoop(conn)
-	return nil
+	return c.connectLocked(ctx)
 }
 
 func (c *WSClient) Close() error {
@@ -343,12 +288,17 @@ func (c *WSClient) Close() error {
 
 	c.mu.Lock()
 	conn := c.conn
+	pendingConn := c.pendingConn
 	c.conn = nil
+	c.pendingConn = nil
 	c.mu.Unlock()
 
 	if conn != nil {
 		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
 		_ = conn.Close()
+	}
+	if pendingConn != nil && pendingConn != conn {
+		_ = pendingConn.Close()
 	}
 	c.failAll(ErrWSClosed)
 	return nil
@@ -672,17 +622,8 @@ func (c *WSClient) failPending(err error) {
 	c.pendingSubs = make(map[int64]*WSSubscription)
 	c.mu.Unlock()
 
-	for _, ch := range pending {
-		ch <- wsPendingResult{err: err}
-		close(ch)
-	}
-	// Also fail in-flight subscription requests
-	for _, sub := range pendingSubs {
-		sub.once.Do(func() {
-			close(sub.events)
-			close(sub.errors)
-		})
-	}
+	failPendingResponses(pending, err)
+	closeSubscriptionSet(pendingSubs, nil)
 }
 
 func (c *WSClient) dispatchPending(msg wsIncomingMessage) {
@@ -769,17 +710,9 @@ func (c *WSClient) cleanupSubscription(id int64, closeChannels bool, reportErr e
 	if !ok {
 		return
 	}
-	if reportErr != nil {
-		select {
-		case sub.errors <- reportErr:
-		default:
-		}
-	}
+	notifySubscriptionError(sub, reportErr)
 	if closeChannels {
-		sub.once.Do(func() {
-			close(sub.events)
-			close(sub.errors)
-		})
+		closeSubscriptionChannels(sub)
 	}
 }
 
@@ -787,46 +720,27 @@ func (c *WSClient) failAll(err error) {
 	c.mu.Lock()
 	conn := c.conn
 	c.conn = nil
+	pendingConn := c.pendingConn
+	c.pendingConn = nil
 	pending := c.pending
 	c.pending = make(map[int64]chan wsPendingResult)
 	pendingSubs := c.pendingSubs
 	c.pendingSubs = make(map[int64]*WSSubscription)
 	subs := c.subs
 	c.subs = make(map[int64]*WSSubscription)
+	c.activeSubs = make(map[int64]subscriptionRequest)
 	c.mu.Unlock()
 
 	if conn != nil {
 		_ = conn.Close()
 	}
+	if pendingConn != nil && pendingConn != conn {
+		_ = pendingConn.Close()
+	}
 
-	for _, ch := range pending {
-		ch <- wsPendingResult{err: err}
-		close(ch)
-	}
-	for _, sub := range pendingSubs {
-		if err != nil {
-			select {
-			case sub.errors <- err:
-			default:
-			}
-		}
-		sub.once.Do(func() {
-			close(sub.events)
-			close(sub.errors)
-		})
-	}
-	for _, sub := range subs {
-		if err != nil {
-			select {
-			case sub.errors <- err:
-			default:
-			}
-		}
-		sub.once.Do(func() {
-			close(sub.events)
-			close(sub.errors)
-		})
-	}
+	failPendingResponses(pending, err)
+	closeSubscriptionSet(pendingSubs, err)
+	closeSubscriptionSet(subs, err)
 }
 
 func (c *WSClient) writeJSON(v interface{}) error {
@@ -926,8 +840,25 @@ func (c *WSClient) reconnectLoop() {
 	}
 }
 
-// doConnect performs the actual connection without checking existing connection.
+// doConnect is used by reconnect flow and shares the same connect path as Connect.
 func (c *WSClient) doConnect(ctx context.Context) error {
+	c.connectMu.Lock()
+	defer c.connectMu.Unlock()
+
+	return c.connectLocked(ctx)
+}
+
+func (c *WSClient) connectLocked(ctx context.Context) error {
+	if c.closed.Load() {
+		return ErrWSClosed
+	}
+	c.mu.RLock()
+	if c.conn != nil {
+		c.mu.RUnlock()
+		return nil
+	}
+	c.mu.RUnlock()
+
 	wsURL, err := websocketURL(c.config.Host)
 	if err != nil {
 		return err
@@ -937,14 +868,35 @@ func (c *WSClient) doConnect(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
+	if c.closed.Load() {
+		c.mu.Unlock()
+		_ = conn.Close()
+		return ErrWSClosed
+	}
+	c.pendingConn = conn
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		if c.pendingConn == conn {
+			c.pendingConn = nil
+		}
+		c.mu.Unlock()
+	}()
 
 	msg := wsIncomingMessage{}
 	if err := conn.ReadJSON(&msg); err != nil {
 		_ = conn.Close()
+		if c.closed.Load() {
+			return ErrWSClosed
+		}
 		return err
 	}
 	if msg.Type != "auth_required" {
 		_ = conn.Close()
+		if c.closed.Load() {
+			return ErrWSClosed
+		}
 		return fmt.Errorf("unexpected ws handshake message: %s", msg.Type)
 	}
 
@@ -953,16 +905,25 @@ func (c *WSClient) doConnect(ctx context.Context) error {
 		"access_token": c.config.Token,
 	}); err != nil {
 		_ = conn.Close()
+		if c.closed.Load() {
+			return ErrWSClosed
+		}
 		return err
 	}
 
 	msg = wsIncomingMessage{}
 	if err := conn.ReadJSON(&msg); err != nil {
 		_ = conn.Close()
+		if c.closed.Load() {
+			return ErrWSClosed
+		}
 		return err
 	}
 	if msg.Type != "auth_ok" {
 		_ = conn.Close()
+		if c.closed.Load() {
+			return ErrWSClosed
+		}
 		if msg.Type == "auth_invalid" {
 			return fmt.Errorf("%w: %s", ErrWSAuthFailed, msg.Message)
 		}
@@ -970,6 +931,17 @@ func (c *WSClient) doConnect(ctx context.Context) error {
 	}
 
 	c.mu.Lock()
+	if c.closed.Load() {
+		c.mu.Unlock()
+		_ = conn.Close()
+		return ErrWSClosed
+	}
+	if c.conn != nil {
+		c.mu.Unlock()
+		_ = conn.Close()
+		return nil
+	}
+	c.pendingConn = nil
 	c.conn = conn
 	c.pending = make(map[int64]chan wsPendingResult)
 	c.pendingSubs = make(map[int64]*WSSubscription)
@@ -979,6 +951,40 @@ func (c *WSClient) doConnect(ctx context.Context) error {
 
 	go c.readLoop(conn)
 	return nil
+}
+
+func failPendingResponses(pending map[int64]chan wsPendingResult, err error) {
+	for _, ch := range pending {
+		ch <- wsPendingResult{err: err}
+		close(ch)
+	}
+}
+
+func notifySubscriptionError(sub *WSSubscription, err error) {
+	if sub == nil || err == nil {
+		return
+	}
+	select {
+	case sub.errors <- err:
+	default:
+	}
+}
+
+func closeSubscriptionChannels(sub *WSSubscription) {
+	if sub == nil {
+		return
+	}
+	sub.once.Do(func() {
+		close(sub.events)
+		close(sub.errors)
+	})
+}
+
+func closeSubscriptionSet(subs map[int64]*WSSubscription, err error) {
+	for _, sub := range subs {
+		notifySubscriptionError(sub, err)
+		closeSubscriptionChannels(sub)
+	}
 }
 
 // restoreSubscriptions re-subscribes all tracked subscriptions after reconnect.

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -109,6 +110,7 @@ func NewClient(host string, opts ...Option) (*Client, error) {
 	if _, err := url.ParseRequestURI(host); err != nil {
 		return nil, fmt.Errorf("invalid host url: %w", err)
 	}
+	host = strings.TrimRight(host, "/")
 
 	config := ClientConfig{
 		Host:   host,
@@ -456,9 +458,14 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 
 func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string, bodyDecoder func(reader io.Reader) error) (*int, error) {
 	var reqBody []byte
+	var err error
+
 	debugEnabled := isDebugEnabled(c.config.Logger, ctx)
 	if debugEnabled && body != nil {
-		reqBody, _ = io.ReadAll(body)
+		reqBody, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("reading request body for debug: %w", err)
+		}
 		body = bytes.NewReader(reqBody)
 	}
 
@@ -487,7 +494,10 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 
 	var respBody []byte
 	if debugEnabled {
-		respBody, _ = io.ReadAll(resp.Body)
+		respBody, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("reading response body for debug: %w", err)
+		}
 		c.config.Logger.Debug("response", "method", req.Method, "url", redactURL(req.URL.String()), "status", resp.StatusCode, "content-type", resp.Header.Get("Content-Type"), "body", redactJSON(respBody))
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 	}
