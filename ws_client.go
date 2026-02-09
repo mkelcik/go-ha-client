@@ -477,16 +477,29 @@ func (c *WSClient) SubscribeTrigger(ctx context.Context, trigger interface{}) (*
 }
 
 func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*WSSubscription, error) {
-	id := atomic.AddInt64(&c.nextID, 1)
 	if req == nil || req["type"] == "" {
 		return nil, ErrWSInvalidRequest
 	}
 
 	sub := &WSSubscription{
-		id:     id,
 		events: make(chan WSEvent, 32),
 		errors: make(chan error, 1),
 		client: c,
+	}
+	if err := c.subscribeWithSub(ctx, req, sub); err != nil {
+		return nil, err
+	}
+	return sub, nil
+}
+
+func (c *WSClient) subscribeWithSub(ctx context.Context, req map[string]interface{}, sub *WSSubscription) error {
+	id := atomic.AddInt64(&c.nextID, 1)
+	if req == nil || req["type"] == "" {
+		return ErrWSInvalidRequest
+	}
+
+	if atomic.LoadInt64(&sub.id) == 0 {
+		atomic.StoreInt64(&sub.id, id)
 	}
 
 	respCh := make(chan wsPendingResult, 1)
@@ -496,7 +509,7 @@ func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*
 	c.mu.Lock()
 	if c.conn == nil {
 		c.mu.Unlock()
-		return nil, ErrWSNotConnected
+		return ErrWSNotConnected
 	}
 	c.pending[id] = respCh
 	c.pendingSubs[id] = sub
@@ -507,7 +520,7 @@ func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*
 		c.mu.Lock()
 		delete(c.pendingSubs, id)
 		c.mu.Unlock()
-		return nil, err
+		return err
 	}
 
 	select {
@@ -516,16 +529,16 @@ func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*
 		delete(c.pendingSubs, id)
 		c.mu.Unlock()
 		go c.unsubscribeIfCreated(respCh, id)
-		return nil, ctx.Err()
+		return ctx.Err()
 	case res := <-respCh:
 		if res.err != nil {
-			return nil, res.err
+			return res.err
 		}
 		if res.msg.Type != "result" || !res.msg.Success {
 			if res.msg.Error != nil {
-				return nil, res.msg.Error
+				return res.msg.Error
 			}
-			return nil, errors.New("ws subscribe failed")
+			return errors.New("ws subscribe failed")
 		}
 
 		// Track subscription for auto-reconnect
@@ -536,7 +549,7 @@ func (c *WSClient) subscribe(ctx context.Context, req map[string]interface{}) (*
 		}
 		c.mu.Unlock()
 
-		return sub, nil
+		return nil
 	}
 }
 
@@ -970,9 +983,7 @@ func (c *WSClient) restoreSubscriptions() {
 	defer cancel()
 
 	for oldID, subReq := range subs {
-		// Create new subscription
-		newSub, err := c.subscribe(ctx, subReq.request)
-		if err != nil {
+		if err := c.subscribeWithSub(ctx, subReq.request, subReq.sub); err != nil {
 			select {
 			case subReq.sub.errors <- fmt.Errorf("failed to restore subscription: %w", err):
 			default:
@@ -980,72 +991,18 @@ func (c *WSClient) restoreSubscriptions() {
 			continue
 		}
 
-		// Map the new ID to the OLD subscription object so the user keeps receiving events.
+		newID := subReq.sub.ID()
 		c.mu.Lock()
-
-		// If the new ID is different from the old ID, we need to clean up the old ID from activeSubs and subs
-		newID := newSub.ID()
 		if newID != oldID {
 			delete(c.activeSubs, oldID)
-			delete(c.subs, oldID) // Clean up stale entry in main subs map
+			delete(c.subs, oldID)
 		}
-
-		// Remove the temporary newSub created by subscribe() from activeSubs
-		// We only want the OLD sub object in activeSubs, updated with the new ID
-		delete(c.activeSubs, newID)
-
-		// Update the activeSubs with new ID but OLD sub object
 		c.activeSubs[newID] = subscriptionRequest{
 			request: subReq.request,
 			sub:     subReq.sub,
 		}
-
-		// Point the main subs map to the OLD sub object associated with the new ID
 		c.subs[newID] = subReq.sub
-
-		// Update ID on the old sub object
-		atomic.StoreInt64(&subReq.sub.id, newID)
 		c.mu.Unlock()
-
-		// Helper to forward events from newSub to oldSub (handling race condition where events arrive before swap)
-		go func(src *WSSubscription, dst *WSSubscription) {
-			// Wait a tiny bit to ensure any in-flight dispatch is done
-			time.Sleep(100 * time.Millisecond)
-
-			eventsCh := src.events
-			errorsCh := src.errors
-			for eventsCh != nil || errorsCh != nil {
-				select {
-				case ev, ok := <-eventsCh:
-					if !ok {
-						eventsCh = nil
-						continue
-					}
-					// Fix subscription ID in the event to match the restored ID
-					ev.SubscriptionID = dst.ID()
-
-					select {
-					case dst.events <- ev:
-					default:
-						// If destination full, we drop
-					}
-				case err, ok := <-errorsCh:
-					if !ok {
-						errorsCh = nil
-						continue
-					}
-					if err == nil {
-						continue
-					}
-					select {
-					case dst.errors <- err:
-					default:
-					}
-				default:
-					return
-				}
-			}
-		}(newSub, subReq.sub)
 	}
 }
 
