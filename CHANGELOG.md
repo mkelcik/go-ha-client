@@ -13,6 +13,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Extra tests for reconnect callbacks and panic-safe callback execution.
 - REST helper `CallServiceForEntity` for common entity-targeted service calls.
 - WebSocket helper `WaitForStateEquals` for simple state waits without predicate boilerplate.
+- WebSocket helper `WaitForStateIn` for waiting on multiple target states.
 - WebSocket helper `SubscribeStateChangedMany` for filtering multiple entities in one subscription.
 - Generic service command helpers `NewTurnOnCmd`, `NewTurnOffCmd`, and `NewToggleCmd`.
 - Typed WebSocket event helper `WSEvent.CallServiceEvent` for `call_service` payload decoding.
@@ -21,6 +22,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - New example `examples/ws_watch_selected_entities` for `SubscribeStateChangedMany`.
 - New example `examples/ws_watch_call_service_events` for typed `WSEvent.CallServiceEvent`.
 - New example `examples/rest_ping_defaults` for `NewClientWithDefaults`.
+- New example `examples/ws_wait_for_state_in` for `WaitForStateIn`.
 
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.

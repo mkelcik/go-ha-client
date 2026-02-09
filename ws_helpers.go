@@ -90,6 +90,26 @@ func (c *WSClient) WaitForStateEquals(ctx context.Context, entityID, targetState
 	})
 }
 
+// WaitForStateIn blocks until the entity state matches any state from targetStates.
+func (c *WSClient) WaitForStateIn(ctx context.Context, entityID string, targetStates ...string) error {
+	if len(targetStates) == 0 {
+		return errors.New("targetStates must not be empty")
+	}
+
+	allowedStates := make(map[string]struct{}, len(targetStates))
+	for _, state := range targetStates {
+		if state == "" {
+			return errors.New("targetStates must not contain empty values")
+		}
+		allowedStates[state] = struct{}{}
+	}
+
+	return c.WaitForState(ctx, entityID, func(s State) bool {
+		_, ok := allowedStates[s.State]
+		return ok
+	})
+}
+
 // CallServiceForEntity calls a service with service_data.entity_id prefilled.
 func (c *WSClient) CallServiceForEntity(ctx context.Context, domain, service, entityID string, data map[string]interface{}) (WSCallServiceResult, error) {
 	result := WSCallServiceResult{}

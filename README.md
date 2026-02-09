@@ -125,7 +125,7 @@ Recommended first runs:
 The `examples` folder also includes:
 - Template rendering
 - History query builder usage
-- Wait-for-state helper usage (`WaitForState` and `WaitForStateEquals`)
+- Wait-for-state helper usage (`WaitForState`, `WaitForStateEquals`, and `WaitForStateIn`)
 - Auto-reconnect WebSocket setup
 - CallServiceForEntity helper usage (REST and WebSocket)
 - State-changed subscription helpers for single or multiple entities
@@ -150,6 +150,7 @@ if err := client.Ping(ctx); errors.Is(err, ha.ErrUnauthorized) {
 
 ### WebSocket lifecycle notes
 - Open one WS connection and reuse it (`ws.Connect` once, `defer ws.Close()`).
+- `WaitForState`, `WaitForStateEquals`, and `WaitForStateIn` are safe to run concurrently from multiple goroutines on one connected WS client.
 - Always unsubscribe when done (`defer sub.Unsubscribe(...)`).
 - Auto-reconnect is opt-in (disabled by default).
 - During auto-reconnect, subscriptions are restored and buffered errors may be forwarded (buffers can still drop when full).

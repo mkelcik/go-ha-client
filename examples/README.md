@@ -29,6 +29,7 @@ go run ./examples/rest_ping
 - `examples/ws_watch_selected_entities`: Watch `state_changed` events for multiple selected entities (`SubscribeStateChangedMany`).
 - `examples/ws_wait_for_state`: Wait until an entity reaches target state with custom predicate (`WaitForState`).
 - `examples/ws_wait_for_state_equals`: Wait until an entity reaches a concrete state string (`WaitForStateEquals`).
+- `examples/ws_wait_for_state_in`: Wait until an entity reaches one of multiple states (`WaitForStateIn`).
 - `examples/ws_auto_reconnect`: Subscribe to events with auto-reconnect callbacks.
 - `examples/ws_call_service_for_entity`: Use helper `CallServiceForEntity` with brightness.
 - `examples/ws_watch_call_service_events`: Watch `call_service` events and decode with `WSEvent.CallServiceEvent`.
@@ -41,3 +42,4 @@ go run ./examples/rest_ping
 ## Notes
 - `examples/helpers_decode_event_data` is offline and does not require Home Assistant connection.
 - All other examples require valid Home Assistant host/token constants.
+- `WaitForState`, `WaitForStateEquals`, and `WaitForStateIn` can run in parallel from multiple goroutines after a single `ws.Connect`.

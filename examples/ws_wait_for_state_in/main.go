@@ -14,9 +14,13 @@ const (
 	haHost        = "http://homeassistant.local:8123"
 	haToken       = "YOUR_LONG_LIVED_TOKEN"
 	lightEntityID = "light.kitchen"
-	targetState   = "on"
 	waitTimeout   = 120 * time.Second
 )
+
+var targetStates = []string{
+	"on",
+	"unavailable",
+}
 
 func main() {
 	// Create base client.
@@ -30,22 +34,25 @@ func main() {
 
 	// Connect websocket and authenticate.
 	// Open one WS connection and reuse it across waits.
-	// WaitForStateEquals is safe to call from multiple goroutines on the same WS client.
+	// WaitForStateIn is safe to call from multiple goroutines on the same WS client.
 	ws := client.WS()
 	if err := ws.Connect(context.Background()); err != nil {
 		log.Fatalf("ws connect failed: %v", err)
 	}
 	defer ws.Close()
 
-	// Overall timeout for waiting on target state.
+	if len(targetStates) == 0 {
+		log.Fatal("add at least one target state")
+	}
+
+	// Overall timeout for waiting on one of target states.
 	ctx, cancel := context.WithTimeout(context.Background(), waitTimeout)
 	defer cancel()
 
-	// Wait until entity reaches the exact target state.
-	fmt.Printf("Waiting for %s to become %q...\n", lightEntityID, targetState)
-	if err := ws.WaitForStateEquals(ctx, lightEntityID, targetState); err != nil {
-		log.Fatalf("wait for state equals failed: %v", err)
+	fmt.Printf("Waiting for %s to become one of %v...\n", lightEntityID, targetStates)
+	if err := ws.WaitForStateIn(ctx, lightEntityID, targetStates...); err != nil {
+		log.Fatalf("wait for state in failed: %v", err)
 	}
 
-	fmt.Printf("Entity %s reached target state %q\n", lightEntityID, targetState)
+	fmt.Printf("Entity %s reached one of target states %v\n", lightEntityID, targetStates)
 }
