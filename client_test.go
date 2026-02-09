@@ -77,6 +77,48 @@ func TestNewClientInvalidURL(t *testing.T) {
 	}
 }
 
+func TestNewClientDefaultTimeout(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient("http://example.com", WithToken("token"))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if client.httpClient.Timeout != defaultHTTPTimeout {
+		t.Fatalf("expected default timeout %s, got %s", defaultHTTPTimeout, client.httpClient.Timeout)
+	}
+}
+
+func TestNewClientWithTimeout(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient("http://example.com", WithToken("token"), WithTimeout(5*time.Second))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if client.httpClient.Timeout != 5*time.Second {
+		t.Fatalf("expected timeout 5s, got %s", client.httpClient.Timeout)
+	}
+}
+
+func TestNewClientWithTimeoutOverridesCustomHTTPClientTimeout(t *testing.T) {
+	t.Parallel()
+
+	base := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+	client, err := NewClient("http://example.com", WithToken("token"), WithHTTPClient(base), WithTimeout(7*time.Second))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if client.httpClient.Timeout != 7*time.Second {
+		t.Fatalf("expected timeout 7s, got %s", client.httpClient.Timeout)
+	}
+	if base.Timeout != 2*time.Second {
+		t.Fatalf("expected original client timeout untouched, got %s", base.Timeout)
+	}
+}
+
 func TestGetConfig(t *testing.T) {
 	t.Parallel()
 

@@ -41,6 +41,7 @@ const (
 	headerContentType   = "Content-Type"
 	headerAuthorization = "Authorization"
 	mimeTypeJSON        = "application/json"
+	defaultHTTPTimeout  = 30 * time.Second
 )
 
 // Common errors returned by the client.
@@ -66,6 +67,8 @@ type ClientConfig struct {
 	Host       string
 	Logger     *slog.Logger
 	HTTPClient *http.Client
+	Timeout    time.Duration
+	timeoutSet bool
 }
 
 // Client is a client for Home Assistant REST API.
@@ -98,6 +101,14 @@ func WithHTTPClient(client *http.Client) Option {
 	}
 }
 
+// WithTimeout sets the HTTP timeout used by the client.
+func WithTimeout(timeout time.Duration) Option {
+	return func(c *ClientConfig) {
+		c.Timeout = timeout
+		c.timeoutSet = true
+	}
+}
+
 // WithDebug enables debug logging (using default text handler to stderr with debug level).
 func WithDebug() Option {
 	return func(c *ClientConfig) {
@@ -113,8 +124,9 @@ func NewClient(host string, opts ...Option) (*Client, error) {
 	host = strings.TrimRight(host, "/")
 
 	config := ClientConfig{
-		Host:   host,
-		Logger: slog.Default(),
+		Host:    host,
+		Logger:  slog.Default(),
+		Timeout: defaultHTTPTimeout,
 	}
 
 	for _, opt := range opts {
@@ -123,7 +135,13 @@ func NewClient(host string, opts ...Option) (*Client, error) {
 
 	httpClient := config.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{
+			Timeout: config.Timeout,
+		}
+	} else if config.timeoutSet {
+		cloned := *httpClient
+		cloned.Timeout = config.Timeout
+		httpClient = &cloned
 	}
 
 	return &Client{
