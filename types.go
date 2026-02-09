@@ -371,7 +371,7 @@ func createQueryString(startTime time.Time, filter interface{}) string {
 		return ""
 	}
 
-	// hack because start time is different (https://developers.home-assistant.io/docs/api/rest)
+	// Home Assistant expects start time as a path segment on the history/logbook endpoints.
 	startTimeString := ""
 	if !startTime.IsZero() {
 		startTimeString = fmt.Sprintf("/%s", startTime.Format(filterDateFormat))

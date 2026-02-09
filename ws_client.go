@@ -153,8 +153,8 @@ type ReconnectConfig struct {
 	MaxRetries  int           // 0 = unlimited
 	MinBackoff  time.Duration // default 1s
 	MaxBackoff  time.Duration // default 60s
-	OnReconnect func()        // called after successful reconnect
-	OnError     func(error)   // called on each failed reconnect attempt
+	OnReconnect func()        // called synchronously after successful reconnect; slow callbacks block reconnect flow
+	OnError     func(error)   // called synchronously on each failed reconnect attempt; slow callbacks block reconnect flow
 }
 
 // subscriptionRequest stores info needed to restore a subscription.
@@ -221,14 +221,16 @@ func WithReconnectBackoff(min, max time.Duration) WSOption {
 	}
 }
 
-// WithOnReconnect sets a callback that is called after successful reconnect.
+// WithOnReconnect sets a callback that is called synchronously after successful reconnect.
+// Keep the callback non-blocking because it runs on the reconnect loop path.
 func WithOnReconnect(fn func()) WSOption {
 	return func(c *WSClient) {
 		c.reconnect.OnReconnect = fn
 	}
 }
 
-// WithOnReconnectError sets a callback for failed reconnect attempts.
+// WithOnReconnectError sets a callback that is called synchronously on failed reconnect attempts.
+// Keep the callback non-blocking because it runs on the reconnect loop path.
 func WithOnReconnectError(fn func(error)) WSOption {
 	return func(c *WSClient) {
 		c.reconnect.OnError = fn
@@ -825,18 +827,41 @@ func (c *WSClient) reconnectLoop() {
 		err := c.doConnect(connectCtx)
 		cancel()
 		if err != nil {
-			if c.reconnect.OnError != nil {
-				c.reconnect.OnError(err)
-			}
+			c.invokeReconnectError(err)
 			continue
 		}
 
 		// Success - restore subscriptions
 		c.restoreSubscriptions()
-		if c.reconnect.OnReconnect != nil {
-			c.reconnect.OnReconnect()
-		}
+		c.invokeReconnected()
 		return
+	}
+}
+
+func (c *WSClient) invokeReconnected() {
+	if c.reconnect.OnReconnect == nil {
+		return
+	}
+	defer c.recoverReconnectCallbackPanic("on_reconnect")
+	c.reconnect.OnReconnect()
+}
+
+func (c *WSClient) invokeReconnectError(err error) {
+	if c.reconnect.OnError == nil {
+		return
+	}
+	defer c.recoverReconnectCallbackPanic("on_reconnect_error")
+	c.reconnect.OnError(err)
+}
+
+func (c *WSClient) recoverReconnectCallbackPanic(callback string) {
+	recovered := recover()
+	if recovered == nil {
+		return
+	}
+
+	if c.config.Logger != nil {
+		c.config.Logger.Error("ws reconnect callback panic recovered", "callback", callback, "panic", recovered)
 	}
 }
 
@@ -848,6 +873,7 @@ func (c *WSClient) doConnect(ctx context.Context) error {
 	return c.connectLocked(ctx)
 }
 
+// connectLocked performs dial+auth+attach; caller must hold connectMu.
 func (c *WSClient) connectLocked(ctx context.Context) error {
 	if c.closed.Load() {
 		return ErrWSClosed

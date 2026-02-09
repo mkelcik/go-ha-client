@@ -185,6 +185,7 @@ func TestHistoryQueryBuilder(t *testing.T) {
 		WithStart(start).
 		WithEnd(end).
 		WithEntities("light.kitchen", "sensor.temp").
+		WithMinimalResponse(true).
 		WithNoAttributes(true).
 		WithSignificantChangesOnly(true)
 
@@ -198,8 +199,8 @@ func TestHistoryQueryBuilder(t *testing.T) {
 	if filter.FilterEntityID != "light.kitchen,sensor.temp" {
 		t.Fatalf("unexpected entity filter: %s", filter.FilterEntityID)
 	}
-	if !filter.NoAttributes || !filter.SignificantChangesOnly {
-		t.Fatalf("unexpected flags: no_attributes=%t significant_changes_only=%t", filter.NoAttributes, filter.SignificantChangesOnly)
+	if !filter.MinimalResponse || !filter.NoAttributes || !filter.SignificantChangesOnly {
+		t.Fatalf("unexpected flags: minimal_response=%t no_attributes=%t significant_changes_only=%t", filter.MinimalResponse, filter.NoAttributes, filter.SignificantChangesOnly)
 	}
 
 	got := query.String()
@@ -213,6 +214,9 @@ func TestHistoryQueryBuilder(t *testing.T) {
 	}
 	if !strings.Contains(got, "no_attributes=true") {
 		t.Fatalf("missing no_attributes in %q", got)
+	}
+	if !strings.Contains(got, "minimal_response=true") {
+		t.Fatalf("missing minimal_response in %q", got)
 	}
 	if !strings.Contains(got, "significant_changes_only=true") {
 		t.Fatalf("missing significant_changes_only in %q", got)

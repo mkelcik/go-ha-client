@@ -9,9 +9,11 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -117,6 +119,89 @@ func TestNewClientWithTimeoutOverridesCustomHTTPClientTimeout(t *testing.T) {
 	if base.Timeout != 2*time.Second {
 		t.Fatalf("expected original client timeout untouched, got %s", base.Timeout)
 	}
+}
+
+func TestWithLoggerOption(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	client, err := NewClient("http://example.com", WithToken("token"), WithLogger(logger))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if client.config.Logger != logger {
+		t.Fatalf("expected custom logger to be set")
+	}
+}
+
+func TestWithDebugOptionEnablesDebugLevel(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient("http://example.com", WithToken("token"), WithDebug())
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if !client.config.Logger.Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatalf("expected debug logger to be enabled")
+	}
+}
+
+func TestGetHistoryNilQuery(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		if r.URL.Path != "/api/history/period" {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(t, server.URL)
+	_, err := client.GetHistory(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestGetHistoryWithMinimalResponse(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2024, 3, 1, 12, 0, 0, 0, time.UTC)
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected method: %s", r.Method))
+			return
+		}
+		expectedPath := "/api/history/period/" + start.Format(filterDateFormat)
+		if r.URL.Path != expectedPath {
+			reportHandlerErr(errCh, fmt.Errorf("unexpected path: %s", r.URL.Path))
+			return
+		}
+		if r.URL.Query().Get("minimal_response") != "true" {
+			reportHandlerErr(errCh, fmt.Errorf("missing minimal_response query in %s", r.URL.RawQuery))
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newTestClient(t, server.URL)
+	query := NewHistoryQuery().WithStart(start).WithMinimalResponse(true)
+	_, err := client.GetHistory(context.Background(), query)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestGetConfig(t *testing.T) {
@@ -1081,6 +1166,38 @@ func (e errorRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
 	return nil, e.err
 }
 
+type readErrorReader struct {
+	err error
+}
+
+func (r readErrorReader) Read(_ []byte) (int, error) {
+	return 0, r.err
+}
+
+type readErrorBody struct {
+	err error
+}
+
+func (b readErrorBody) Read(_ []byte) (int, error) {
+	return 0, b.err
+}
+
+func (b readErrorBody) Close() error {
+	return nil
+}
+
+type readErrorResponseRoundTripper struct {
+	err error
+}
+
+func (rt readErrorResponseRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       readErrorBody(rt),
+		Header:     make(http.Header),
+	}, nil
+}
+
 func TestDoRequestWrapsRoundTripError(t *testing.T) {
 	t.Parallel()
 
@@ -1095,6 +1212,89 @@ func TestDoRequestWrapsRoundTripError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "network down") {
 		t.Fatalf("expected wrapped error, got: %v", err)
 	}
+}
+
+func TestDebugRequestBodyReadError(t *testing.T) {
+	t.Parallel()
+
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"changed_states":[],"service_response":{}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := NewClient(server.URL, WithToken("token"), WithDebug())
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	_, err = client.CallServiceWithResponse(context.Background(), "light", "turn_on", readErrorReader{err: errors.New("read body failed")})
+	if err == nil || !strings.Contains(err.Error(), "reading request body for debug") {
+		t.Fatalf("expected debug request body read error, got: %v", err)
+	}
+	if atomic.LoadInt32(&calls) != 0 {
+		t.Fatalf("expected request not to be sent on debug body read error")
+	}
+}
+
+func TestDebugResponseBodyReadError(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient("http://example.com", WithToken("token"), WithDebug(), WithHTTPClient(&http.Client{
+		Transport: readErrorResponseRoundTripper{err: errors.New("read response failed")},
+	}))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	err = client.Ping(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "reading response body for debug") {
+		t.Fatalf("expected debug response body read error, got: %v", err)
+	}
+}
+
+func TestDebugModeRequestPaths(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/":
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/states/"):
+			if r.Header.Get("Content-Type") != mimeTypeJSON {
+				reportHandlerErr(errCh, fmt.Errorf("missing content type"))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(StateResponse{
+				EntityID: "light.kitchen",
+				State: State{
+					State: "on",
+				},
+			})
+		default:
+			reportHandlerErr(errCh, fmt.Errorf("unexpected request: %s %s", r.Method, r.URL.Path))
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := NewClient(server.URL, WithToken("token"), WithDebug())
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	if err := client.Ping(context.Background()); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+
+	_, err = client.CreateState(context.Background(), "light.kitchen", State{State: "on"})
+	if err != nil {
+		t.Fatalf("create state: %v", err)
+	}
+
+	assertNoHandlerErr(t, errCh)
 }
 
 func TestBadRequestFallbackError(t *testing.T) {

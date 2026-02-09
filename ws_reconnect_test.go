@@ -536,3 +536,121 @@ func testResubscribe(t *testing.T, sameID bool) {
 
 	assertNoHandlerErr(t, errCh)
 }
+
+func TestWSOnReconnectPanicIsRecovered(t *testing.T) {
+	t.Parallel()
+
+	disconnect := make(chan struct{})
+	reconnected := make(chan struct{})
+	errCh := make(chan error, 1)
+	var connectionCount int32
+
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		count := atomic.AddInt32(&connectionCount, 1)
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		if count == 1 {
+			<-disconnect
+			return
+		}
+
+		if count == 2 {
+			close(reconnected)
+			time.Sleep(300 * time.Millisecond)
+		}
+	})
+	defer srv.Close()
+
+	client, err := NewClient(srv.URL, WithToken("token"))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	ws := client.WS(
+		WithAutoReconnect(true),
+		WithReconnectBackoff(10*time.Millisecond, 50*time.Millisecond),
+		WithOnReconnect(func() {
+			panic("on reconnect panic")
+		}),
+	)
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer ws.Close()
+
+	close(disconnect)
+
+	select {
+	case <-reconnected:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timeout waiting for reconnect")
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	if !ws.IsConnected() {
+		t.Fatalf("expected websocket to stay connected after callback panic")
+	}
+
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSOnReconnectErrorPanicIsRecovered(t *testing.T) {
+	t.Parallel()
+
+	disconnect := make(chan struct{})
+	errCh := make(chan error, 1)
+	var connectionCount int32
+	var onErrorCalls int32
+
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		count := atomic.AddInt32(&connectionCount, 1)
+		defer conn.Close()
+
+		if count == 1 {
+			_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+			_ = conn.ReadJSON(&map[string]interface{}{})
+			_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+			<-disconnect
+			return
+		}
+
+		// Reconnect attempts fail immediately.
+	})
+	defer srv.Close()
+
+	client, err := NewClient(srv.URL, WithToken("token"))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	ws := client.WS(
+		WithAutoReconnect(true),
+		WithMaxRetries(3),
+		WithReconnectBackoff(10*time.Millisecond, 30*time.Millisecond),
+		WithOnReconnectError(func(err error) {
+			atomic.AddInt32(&onErrorCalls, 1)
+			panic("on reconnect error panic")
+		}),
+	)
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer ws.Close()
+
+	close(disconnect)
+
+	deadline := time.After(2 * time.Second)
+	for atomic.LoadInt32(&onErrorCalls) == 0 {
+		select {
+		case <-deadline:
+			t.Fatalf("timeout waiting for reconnect error callback")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	assertNoHandlerErr(t, errCh)
+}

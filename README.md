@@ -61,16 +61,13 @@ import (
 	"context"
 	"fmt"
 	ha "github.com/mkelcik/go-ha-client/v2"
-	"net/http"
 	"time"
 )
 
 func main() {
 	client, err := ha.NewClient("http://my-ha.home", 
 		ha.WithToken("mytoken"),
-		ha.WithHTTPClient(&http.Client{
-			Timeout: 30 * time.Second,
-		}),
+		ha.WithTimeout(30*time.Second), // Optional (default is 30s)
 	)
 	if err != nil {
 		panic(err)
@@ -98,9 +95,7 @@ Enable debug logs for REST and WebSocket requests/responses:
 	client, err := ha.NewClient("http://ha.home",
 		ha.WithToken("token"),
 		ha.WithDebug(),
-		ha.WithHTTPClient(&http.Client{
-			Timeout: 30 * time.Second,
-		}),
+		ha.WithTimeout(30*time.Second),
 	)
 	if err != nil {
 		panic(err)
@@ -109,335 +104,25 @@ Enable debug logs for REST and WebSocket requests/responses:
 When enabled, request/response bodies are logged (tokens are redacted for WS auth).
 
 ### Examples
+Ready-to-run examples for beginners are in [`examples/`](examples/README.md).
 
-To turn light with entity id `light.light_1` on, we can use `NewTurnLightOnCmd` helper, to create command and call service.
-```go
-// turn light on
-if _, err := client.CallService(context.Background(), ha.NewTurnLightOnCmd("light.light_1")); err != nil {
-	panic(err)
-}
+Recommended first runs:
+- [`examples/rest_ping`](examples/rest_ping) - check connection and print instance info.
+- [`examples/rest_switch_control`](examples/rest_switch_control) - turn on/off/toggle a switch over REST.
+- [`examples/ws_switch_control`](examples/ws_switch_control) - turn on/off/toggle a switch over WebSocket.
+- [`examples/ws_watch_light_state`](examples/ws_watch_light_state) - watch light state changes in real time.
+- [`examples/rest_camera_snapshot`](examples/rest_camera_snapshot) - fetch and save camera JPEG.
 
-// turn light off 
-if _, err := client.CallService(context.Background(), ha.NewTurnLightOffCmd("light.light_1")); err != nil {
-	panic(err)
-}
-```
-or turn `switch.switch_1` off without helper
-```go
-if _, err := client.CallService(context.Background(), ha.DefaultServiceCmd{
-    Service:  ha.ServiceTurnOff,
-    Domain:   ha.DomainSwitch, 
-    EntityID: "switch.switch_1",
-}); err != nil {
-	panic(err)
-}
-```
+The `examples` folder also includes:
+- Template rendering
+- History query builder usage
+- Wait-for-state helper usage
+- Auto-reconnect WebSocket setup
+- CallServiceForEntity helper usage
 
-Take and save picture from camera 
-```go
-camImg, err := client.GetCameraJpeg(context.Background(), "camera.my_camera")
-if err != nil {
-	panic(err)
-}
-
-f, err := os.Create("camera.jpg")
-if err != nil {
-	panic(err)
-}
-defer f.Close()
-
-if err := jpeg.Encode(f, camImg, nil); err != nil {
-	panic(err)
-}
-```
-
-### More examples
-
-Get components
-```go
-components, err := client.GetComponents(context.Background())
-if err != nil {
-	panic(err)
-}
-fmt.Println(components)
-```
-
-Render template
-```go
-rendered, err := client.RenderTemplate(context.Background(), "{{ states('sensor.test') }}")
-if err != nil {
-	panic(err)
-}
-fmt.Println(rendered)
-```
-
-Calendar events
-```go
-start := time.Now().Add(-24 * time.Hour)
-end := time.Now()
-events, err := client.GetCalendarEvents(context.Background(), "calendar.home", start, end)
-if err != nil {
-	panic(err)
-}
-fmt.Println(events)
-```
-
-Handle intent
-```go
-resp, err := client.HandleIntent(context.Background(), ha.IntentRequest{
-	Name: "HassTurnOn",
-	Data: map[string]interface{}{"entity": "light.kitchen"},
-})
-if err != nil {
-	panic(err)
-}
-fmt.Println(resp.Response)
-```
-
-Weather forecasts
-```go
-forecast, err := client.GetWeatherForecasts(context.Background(), "weather.home", "daily")
-if err != nil {
-	panic(err)
-}
-fmt.Println(forecast.Forecast)
-```
-
-### Helpers
-
-Subscribe to state changes for a single entity
-```go
-sub, err := ws.SubscribeStateChanged(context.Background(), "light.kitchen")
-if err != nil {
-	panic(err)
-}
-defer sub.Unsubscribe(context.Background())
-```
-
-Wait for a specific state
-```go
-err := ws.WaitForState(context.Background(), "light.kitchen", func(s ha.State) bool {
-	return s.State == "on"
-})
-if err != nil {
-	panic(err)
-}
-```
-
-Call a service with entity_id prefilled
-```go
-_, err := ws.CallServiceForEntity(
-	context.Background(),
-	"light",
-	"turn_on",
-	"light.kitchen",
-	map[string]interface{}{"brightness": 200},
-)
-if err != nil {
-	panic(err)
-}
-```
-
-Decode event payloads
-```go
-type StateChanged struct {
-	EntityID string  `json:"entity_id"`
-	NewState ha.State `json:"new_state"`
-}
-
-ev := <-sub.Events()
-data, err := ha.DecodeEventData[StateChanged](ev)
-if err != nil {
-	panic(err)
-}
-fmt.Println(data.EntityID, data.NewState.State)
-```
-
-Entity ID helpers
-```go
-id := ha.BuildEntityID("light", "kitchen") // light.kitchen
-domain, objectID, err := ha.ParseEntityID(id)
-if err != nil {
-	panic(err)
-}
-fmt.Println(domain, objectID)
-```
-
-History query builder
-```go
-query := ha.NewHistoryQuery().
-	WithStart(time.Now().Add(-24 * time.Hour)).
-	WithEnd(time.Now()).
-	WithEntities("light.kitchen", "sensor.temp").
-	WithNoAttributes(true)
-
-history, err := client.GetHistory(context.Background(), query)
-if err != nil {
-	panic(err)
-}
-fmt.Println(len(history))
-```
-
-### WebSocket Client
-The client includes a WebSocket helper for real-time events.
-
-#### Basic Usage
-```go
-// Create WebSocket client from REST client
-ws := client.WS(
-	ha.WithAutoReconnect(true), // Enable auto-reconnect
-	ha.WithOnReconnect(func() {
-		log.Println("Reconnected to Home Assistant")
-	}),
-)
-
-if err := ws.Connect(context.Background()); err != nil {
-	panic(err)
-}
-defer ws.Close()
-
-// Subscribe to events
-sub, err := ws.SubscribeEvents(context.Background(), "state_changed")
-if err != nil {
-	panic(err)
-}
-
-// Automatically restores subscription after reconnect!
-for event := range sub.Events() {
-	fmt.Printf("Event: %s\n", event.EventType)
-}
-```
-
-#### Understanding WSEvent (Raw vs Data)
-`WSEvent` includes:
-- `EventType` — the HA event type (e.g. `state_changed`)
-- `Data` — just `event.data` (convenient for common use)
-- `Raw` — the full `event` payload (includes `event_type`, `time_fired`, `context`, etc.)
-
-Example WebSocket message (as received from HA):
-```json
-{
-  "type": "event",
-  "id": 1,
-  "event": {
-    "event_type": "state_changed",
-    "data": {
-      "entity_id": "light.kitchen",
-      "old_state": { "state": "off" },
-      "new_state": { "state": "on" }
-    },
-    "time_fired": "2026-02-06T18:00:40.191Z",
-    "context": { "id": "01KGT1SYDBVFFN56FYWT8W11B6" }
-  }
-}
-```
-
-Use the `StateChanged()` helper for the typical `state_changed` case:
-```go
-for ev := range sub.Events() {
-	data, ok, err := ev.StateChanged()
-	if err != nil {
-		continue
-	}
-	if !ok {
-		continue
-	}
-	if data.NewState == nil {
-		continue
-	}
-	oldState := ""
-	if data.OldState != nil {
-		oldState = data.OldState.State
-	}
-	fmt.Println(data.EntityID, data.NewState.State, oldState)
-}
-```
-
-You can also read `Data` directly if you prefer:
-```go
-type StateChanged struct {
-	EntityID string `json:"entity_id"`
-	NewState struct {
-		State string `json:"state"`
-	} `json:"new_state"`
-}
-
-for ev := range sub.Events() {
-	data, err := ha.DecodeEventData[StateChanged](ev)
-	if err != nil {
-		continue
-	}
-	fmt.Println(data.EntityID, data.NewState.State)
-}
-```
-
-Use `Raw` when you need the full envelope (e.g. `time_fired`, `context`):
-```go
-type FullEvent struct {
-	EventType string `json:"event_type"`
-	TimeFired string `json:"time_fired"`
-	Context   struct {
-		ID string `json:"id"`
-	} `json:"context"`
-	Data ha.StateChangedEventData `json:"data"`
-}
-
-var full FullEvent
-if err := json.Unmarshal(ev.Raw, &full); err == nil {
-	fmt.Println(full.EventType, full.TimeFired, full.Context.ID)
-}
-```
-
-#### Auto-Reconnect Configuration
-The WebSocket client supports automatic reconnection with exponential backoff.
-```go
-ws := client.WS(
-	ha.WithAutoReconnect(true),
-	ha.WithMaxRetries(10),           // Unlimited if 0
-	ha.WithReconnectBackoff(time.Second, 60*time.Second),
-	ha.WithOnReconnect(func() { ... }),
-	ha.WithOnReconnectError(func(err error) { ... }),
-)
-```
-
-#### Advanced Usage
-
-**Parse events:**
-```go
-type StateChangedEvent struct {
-	EntityID string `json:"entity_id"`
-	NewState struct {
-		State string `json:"state"`
-	} `json:"new_state"`
-}
-
-for ev := range sub.Events() {
-	if ev.EventType != "state_changed" {
-		continue
-	}
-	var data StateChangedEvent
-	if err := json.Unmarshal(ev.Data, &data); err != nil {
-		continue
-	}
-	if data.EntityID == "light.kitchen" {
-		fmt.Println("light.kitchen changed", data.NewState.State)
-	}
-}
-```
-
-**Call a service over WebSocket:**
-```go
-result, err := ws.CallService(
-	context.Background(),
-	"light",
-	"turn_on",
-	map[string]interface{}{"entity_id": "light.kitchen"},
-)
-if err != nil {
-	panic(err)
-}
-fmt.Println("context id:", result.Context.ID)
-```
+### WebSocket notes
+- `WithOnReconnect` and `WithOnReconnectError` callbacks are called synchronously from the reconnect loop.
+- Keep those callbacks short and non-blocking (offload heavy work to another goroutine if needed).
 
 ### Error handling
 Use sentinel errors with `errors.Is`:
@@ -456,3 +141,4 @@ if err := client.Ping(ctx); errors.Is(err, ha.ErrUnauthorized) {
 - Always unsubscribe when done (`defer sub.Unsubscribe(...)`).
 - Auto-reconnect is opt-in (disabled by default).
 - During auto-reconnect, subscriptions are restored and buffered errors may be forwarded (buffers can still drop when full).
+- Reconnect callbacks (`WithOnReconnect`, `WithOnReconnectError`) are blocking/synchronous and should stay lightweight.
