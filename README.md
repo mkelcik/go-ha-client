@@ -54,6 +54,12 @@ go get github.com/mkelcik/go-ha-client/v2@latest
 Change `Token` and `Host` to your actual home-assistant bearer token and address
 Check home-assistant documentation how get access token.
 
+Shortest setup:
+```go
+client, err := ha.NewClientWithDefaults("http://my-ha.home", "mytoken")
+```
+
+Configurable setup:
 ```go
 package main
 

@@ -121,6 +121,29 @@ func TestNewClientWithTimeoutOverridesCustomHTTPClientTimeout(t *testing.T) {
 	}
 }
 
+func TestNewClientWithDefaults(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClientWithDefaults("http://example.com", "token")
+	if err != nil {
+		t.Fatalf("new client with defaults: %v", err)
+	}
+	if client.config.Token != "token" {
+		t.Fatalf("expected token to be set")
+	}
+	if client.httpClient.Timeout != defaultHTTPTimeout {
+		t.Fatalf("expected default timeout %s, got %s", defaultHTTPTimeout, client.httpClient.Timeout)
+	}
+}
+
+func TestNewClientWithDefaultsInvalidURL(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewClientWithDefaults(":", "token"); err == nil {
+		t.Fatalf("expected invalid URL error")
+	}
+}
+
 func TestWithLoggerOption(t *testing.T) {
 	t.Parallel()
 

@@ -150,6 +150,11 @@ func NewClient(host string, opts ...Option) (*Client, error) {
 	}, nil
 }
 
+// NewClientWithDefaults creates a client using default settings and token auth.
+func NewClientWithDefaults(host, token string) (*Client, error) {
+	return NewClient(host, WithToken(token))
+}
+
 // Ping checks if the API is reachable.
 func (c *Client) Ping(ctx context.Context) error {
 	return c.doGetRequestJson(ctx, epPing, nil)
