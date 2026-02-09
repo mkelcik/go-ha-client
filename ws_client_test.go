@@ -432,6 +432,118 @@ func TestWSSubscribeStateChangedFiltersEntity(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
+func TestWSSubscribeStateChangedManyFiltersEntities(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		subReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&subReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		if subReq["type"] != "subscribe_events" {
+			reportHandlerErr(errCh, errors.New("expected subscribe_events"))
+			return
+		}
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":      subReq["id"],
+			"type":    "result",
+			"success": true,
+			"result":  nil,
+		})
+
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":   subReq["id"],
+			"type": "event",
+			"event": map[string]interface{}{
+				"event_type": "state_changed",
+				"data": map[string]interface{}{
+					"entity_id": "light.other",
+					"new_state": map[string]interface{}{"state": "on"},
+				},
+			},
+		})
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":   subReq["id"],
+			"type": "event",
+			"event": map[string]interface{}{
+				"event_type": "state_changed",
+				"data": map[string]interface{}{
+					"entity_id": "light.kitchen",
+					"new_state": map[string]interface{}{"state": "on"},
+				},
+			},
+		})
+		_ = conn.WriteJSON(map[string]interface{}{
+			"id":   subReq["id"],
+			"type": "event",
+			"event": map[string]interface{}{
+				"event_type": "state_changed",
+				"data": map[string]interface{}{
+					"entity_id": "switch.garage",
+					"new_state": map[string]interface{}{"state": "off"},
+				},
+			},
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	sub, err := ws.SubscribeStateChangedMany(context.Background(), "light.kitchen", "switch.garage")
+	if err != nil {
+		t.Fatalf("subscribe many: %v", err)
+	}
+
+	got := make(map[string]bool, 2)
+	for len(got) < 2 {
+		select {
+		case ev, ok := <-sub.Events():
+			if !ok {
+				t.Fatalf("subscription closed before receiving all events")
+			}
+			data, ok, err := ev.StateChanged()
+			if err != nil {
+				t.Fatalf("decode event: %v", err)
+			}
+			if !ok {
+				t.Fatalf("expected state_changed data")
+			}
+			got[data.EntityID] = true
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout waiting for filtered events")
+		}
+	}
+
+	if !got["light.kitchen"] || !got["switch.garage"] {
+		t.Fatalf("unexpected filtered entities: %#v", got)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSSubscribeStateChangedManyRequiresEntities(t *testing.T) {
+	t.Parallel()
+
+	ws := &WSClient{}
+	if _, err := ws.SubscribeStateChangedMany(context.Background()); !errors.Is(err, ErrEmptyEntityID) {
+		t.Fatalf("expected ErrEmptyEntityID, got: %v", err)
+	}
+	if _, err := ws.SubscribeStateChangedMany(context.Background(), "light.kitchen", ""); !errors.Is(err, ErrEmptyEntityID) {
+		t.Fatalf("expected ErrEmptyEntityID, got: %v", err)
+	}
+}
+
 func TestWSWaitForState(t *testing.T) {
 	t.Parallel()
 

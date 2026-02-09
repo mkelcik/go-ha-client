@@ -13,6 +13,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Extra tests for reconnect callbacks and panic-safe callback execution.
 - REST helper `CallServiceForEntity` for common entity-targeted service calls.
 - WebSocket helper `WaitForStateEquals` for simple state waits without predicate boilerplate.
+- WebSocket helper `SubscribeStateChangedMany` for filtering multiple entities in one subscription.
 
 ### Removed
 - Removed `GetDiscoverInfo` and conversation process API support to match REST docs.

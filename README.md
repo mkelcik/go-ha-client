@@ -121,6 +121,7 @@ The `examples` folder also includes:
 - Wait-for-state helper usage
 - Auto-reconnect WebSocket setup
 - CallServiceForEntity helper usage (REST and WebSocket)
+- State-changed subscription helpers for single or multiple entities
 
 ### WebSocket notes
 - `WithOnReconnect` and `WithOnReconnectError` callbacks are called synchronously from the reconnect loop.

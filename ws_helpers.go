@@ -8,14 +8,28 @@ import (
 
 // SubscribeStateChanged subscribes to state changes for a single entity.
 func (c *WSClient) SubscribeStateChanged(ctx context.Context, entityID string) (*WSSubscription, error) {
-	if entityID == "" {
+	return c.SubscribeStateChangedMany(ctx, entityID)
+}
+
+// SubscribeStateChangedMany subscribes to state changes for multiple entities.
+func (c *WSClient) SubscribeStateChangedMany(ctx context.Context, entityIDs ...string) (*WSSubscription, error) {
+	if len(entityIDs) == 0 {
 		return nil, ErrEmptyEntityID
 	}
+
+	allowedEntities := make(map[string]struct{}, len(entityIDs))
+	for _, entityID := range entityIDs {
+		if entityID == "" {
+			return nil, ErrEmptyEntityID
+		}
+		allowedEntities[entityID] = struct{}{}
+	}
+
 	base, err := c.SubscribeEvents(ctx, EventTypeStateChanged)
 	if err != nil {
 		return nil, err
 	}
-	return filterSubscriptionByEntity(base, entityID), nil
+	return filterSubscriptionByEntities(base, allowedEntities), nil
 }
 
 // WaitForState blocks until predicate returns true for the given entity state.
@@ -103,7 +117,7 @@ func DecodeEventData[T any](event WSEvent) (T, error) {
 	return data, nil
 }
 
-func filterSubscriptionByEntity(sub *WSSubscription, entityID string) *WSSubscription {
+func filterSubscriptionByEntities(sub *WSSubscription, allowedEntities map[string]struct{}) *WSSubscription {
 	filtered := &WSSubscription{
 		id:       sub.ID(),
 		idSource: &sub.id,
@@ -131,7 +145,10 @@ func filterSubscriptionByEntity(sub *WSSubscription, entityID string) *WSSubscri
 					continue
 				}
 				payload, ok, err := ev.StateChanged()
-				if err != nil || !ok || payload.EntityID != entityID {
+				if err != nil || !ok {
+					continue
+				}
+				if _, ok := allowedEntities[payload.EntityID]; !ok {
 					continue
 				}
 				select {
