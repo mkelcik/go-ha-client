@@ -3,7 +3,6 @@ package go_ha_client
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -208,9 +207,8 @@ func TestWSFailPendingOnDisconnect(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		// We expect ErrWSClosed or similar
-		if !strings.Contains(err.Error(), "ws connection closed") && !strings.Contains(err.Error(), "closed") {
-			t.Errorf("expected closed error, got: %v", err)
+		if !errors.Is(err, ErrWSClosed) {
+			t.Errorf("expected ErrWSClosed, got: %v", err)
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for pending request failure")
