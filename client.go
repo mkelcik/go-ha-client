@@ -298,8 +298,8 @@ func (c *Client) CreateState(ctx context.Context, entityID string, newState Stat
 		return json.NewDecoder(reader).Decode(&response)
 	})
 
-	if respCode != nil {
-		response.CreateCode = *respCode
+	if respCode != 0 {
+		response.CreateCode = respCode
 	}
 	return response, err
 }
@@ -502,7 +502,7 @@ func (c *Client) doGetRequestPlain(ctx context.Context, endpoint string, plainTe
 	})
 }
 
-func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader, bodyDecoder func(reader io.Reader) error) (*int, error) {
+func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader, bodyDecoder func(reader io.Reader) error) (int, error) {
 	return c.doWithHeaders(ctx, method, endpoint, body, nil, bodyDecoder)
 }
 
@@ -581,19 +581,19 @@ func handleResponseStatus(resp *http.Response, respBody []byte) error {
 	return nil
 }
 
-func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string, bodyDecoder func(reader io.Reader) error) (*int, error) {
+func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string, bodyDecoder func(reader io.Reader) error) (int, error) {
 	var err error
 	debugEnabled := isDebugEnabled(c.config.Logger, ctx)
 	reqURL := c.requestURL(endpoint)
 
 	body, reqBody, err := c.prepareRequestBodyForDebug(body, debugEnabled)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request `[%s] %s : %w`", method, reqURL, err)
+		return 0, fmt.Errorf("error creating request `[%s] %s : %w`", method, reqURL, err)
 	}
 	req.Header.Add(headerAuthorization, fmt.Sprintf("Bearer %s", c.config.Token))
 	for key, value := range headers {
@@ -604,24 +604,26 @@ func (c *Client) doWithHeaders(ctx context.Context, method, endpoint string, bod
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error in request `[%s] %s`: %w", method, reqURL, err)
+		return 0, fmt.Errorf("error in request `[%s] %s`: %w", method, reqURL, err)
 	}
 	defer resp.Body.Close()
 
+	respCode := resp.StatusCode
+
 	respBody, err := c.prepareResponseBodyForDebug(req, resp, debugEnabled)
 	if err != nil {
-		return nil, err
+		return respCode, err
 	}
 
 	if err := handleResponseStatus(resp, respBody); err != nil {
-		return nil, err
+		return respCode, err
 	}
 
 	reader := resp.Body
 	if err := bodyDecoder(reader); err != nil {
-		return nil, fmt.Errorf("error decoding response body `[%s] %s: %w`", method, reqURL, err)
+		return respCode, fmt.Errorf("error decoding response body `[%s] %s: %w`", method, reqURL, err)
 	}
-	return &resp.StatusCode, nil
+	return respCode, nil
 }
 
 func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io.Reader, bodyDecoder func(reader io.Reader) error) error {

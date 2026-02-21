@@ -1,4 +1,8 @@
 # go-ha-client
+[![CI](https://github.com/mkelcik/go-ha-client/actions/workflows/ci.yml/badge.svg)](https://github.com/mkelcik/go-ha-client/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mkelcik/go-ha-client/v2.svg)](https://pkg.go.dev/github.com/mkelcik/go-ha-client/v2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mkelcik/go-ha-client)](https://goreportcard.com/report/github.com/mkelcik/go-ha-client)
+
 Go client for Home Assistant REST API.
 This client targets the official REST API documentation:
 https://developers.home-assistant.io/docs/api/rest
@@ -43,6 +47,40 @@ The client follows official Home Assistant REST and WebSocket API docs.
 ### Install
 ```bash
 go get github.com/mkelcik/go-ha-client/v2@latest
+```
+
+### Quick start
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	ha "github.com/mkelcik/go-ha-client/v2"
+)
+
+func main() {
+	client, err := ha.NewClient(
+		"http://homeassistant.local:8123",
+		ha.WithToken("YOUR_LONG_LIVED_TOKEN"),
+		ha.WithTimeout(30*time.Second),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := client.Ping(context.Background()); err != nil {
+		panic(err)
+	}
+
+	cfg, err := client.GetConfig(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Connected to Home Assistant %s\n", cfg.Version)
+}
 ```
 
 ### REST vs WebSocket
