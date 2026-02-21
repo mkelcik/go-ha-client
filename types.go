@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -394,13 +393,14 @@ func createQueryString(startTime time.Time, filter interface{}) string {
 
 	queryParams := createParamMap(filter)
 
-	if len(queryParams) == 0 {
+	encodedParams := queryParams.Encode()
+	if encodedParams == "" {
 		return startTimeString
 	}
-	return fmt.Sprintf("%s?%s", startTimeString, strings.Join(queryParams, "&"))
+	return fmt.Sprintf("%s?%s", startTimeString, encodedParams)
 }
 
-func createParamMap(filter interface{}) []string {
+func createParamMap(filter interface{}) url.Values {
 	switch f := filter.(type) {
 	case *StateChangesFilter:
 		return createStateChangesParams(f)
@@ -411,41 +411,41 @@ func createParamMap(filter interface{}) []string {
 	}
 }
 
-func createStateChangesParams(filter *StateChangesFilter) []string {
+func createStateChangesParams(filter *StateChangesFilter) url.Values {
 	if filter == nil {
 		return nil
 	}
 
-	queryParams := make([]string, 0, 5)
+	queryParams := url.Values{}
 	if !filter.EndTime.IsZero() {
-		queryParams = append(queryParams, fmt.Sprintf("end_time=%s", url.QueryEscape(filter.EndTime.Format(filterDateFormat))))
+		queryParams.Add("end_time", filter.EndTime.Format(filterDateFormat))
 	}
 	if filter.FilterEntityID != "" {
-		queryParams = append(queryParams, fmt.Sprintf("filter_entity_id=%s", url.QueryEscape(filter.FilterEntityID)))
+		queryParams.Add("filter_entity_id", filter.FilterEntityID)
 	}
 	if filter.MinimalResponse {
-		queryParams = append(queryParams, "minimal_response=true")
+		queryParams.Add("minimal_response", "true")
 	}
 	if filter.NoAttributes {
-		queryParams = append(queryParams, "no_attributes=true")
+		queryParams.Add("no_attributes", "true")
 	}
 	if filter.SignificantChangesOnly {
-		queryParams = append(queryParams, "significant_changes_only=true")
+		queryParams.Add("significant_changes_only", "true")
 	}
 	return queryParams
 }
 
-func createLogbookParams(filter *LogbookFilter) []string {
+func createLogbookParams(filter *LogbookFilter) url.Values {
 	if filter == nil {
 		return nil
 	}
 
-	queryParams := make([]string, 0, 2)
+	queryParams := url.Values{}
 	if !filter.EndTime.IsZero() {
-		queryParams = append(queryParams, fmt.Sprintf("end_time=%s", url.QueryEscape(filter.EndTime.Format(filterDateFormat))))
+		queryParams.Add("end_time", filter.EndTime.Format(filterDateFormat))
 	}
 	if filter.EntityID != "" {
-		queryParams = append(queryParams, fmt.Sprintf("entity=%s", url.QueryEscape(filter.EntityID)))
+		queryParams.Add("entity", filter.EntityID)
 	}
 	return queryParams
 }
