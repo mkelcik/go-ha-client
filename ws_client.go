@@ -122,6 +122,8 @@ type WSSubscription struct {
 	errors   chan error
 	client   *WSClient
 	once     sync.Once
+	chMu     sync.Mutex
+	closed   bool
 }
 
 // WSCallServiceResult represents a response to a call_service request.
@@ -709,14 +711,10 @@ func (c *WSClient) dispatchEvent(msg wsIncomingMessage) {
 		event.Data = payload.Data
 	}
 
-	select {
-	case sub.events <- event:
-	default:
-		select {
-		case sub.errors <- errors.New("ws subscription event buffer is full"):
-		default:
-		}
+	if trySendSubscriptionEvent(sub, event) {
+		return
 	}
+	notifySubscriptionError(sub, errors.New("ws subscription event buffer is full"))
 }
 
 func (c *WSClient) cleanupPending(id int64) {
@@ -1019,9 +1017,31 @@ func notifySubscriptionError(sub *WSSubscription, err error) {
 	if sub == nil || err == nil {
 		return
 	}
+	sub.chMu.Lock()
+	defer sub.chMu.Unlock()
+	if sub.closed {
+		return
+	}
 	select {
 	case sub.errors <- err:
 	default:
+	}
+}
+
+func trySendSubscriptionEvent(sub *WSSubscription, event WSEvent) bool {
+	if sub == nil {
+		return false
+	}
+	sub.chMu.Lock()
+	defer sub.chMu.Unlock()
+	if sub.closed {
+		return false
+	}
+	select {
+	case sub.events <- event:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1029,10 +1049,14 @@ func closeSubscriptionChannels(sub *WSSubscription) {
 	if sub == nil {
 		return
 	}
-	sub.once.Do(func() {
-		close(sub.events)
-		close(sub.errors)
-	})
+	sub.chMu.Lock()
+	defer sub.chMu.Unlock()
+	if sub.closed {
+		return
+	}
+	sub.closed = true
+	close(sub.events)
+	close(sub.errors)
 }
 
 func closeSubscriptionSet(subs map[int64]*WSSubscription, err error) {
@@ -1057,10 +1081,7 @@ func (c *WSClient) restoreSubscriptions() {
 
 	for oldID, subReq := range subs {
 		if err := c.subscribeWithSub(ctx, subReq.request, subReq.sub); err != nil {
-			select {
-			case subReq.sub.errors <- fmt.Errorf("failed to restore subscription: %w", err):
-			default:
-			}
+			notifySubscriptionError(subReq.sub, fmt.Errorf("failed to restore subscription: %w", err))
 			continue
 		}
 
