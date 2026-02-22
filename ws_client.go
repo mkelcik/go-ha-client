@@ -536,6 +536,21 @@ func (c *WSClient) subscribeWithSub(ctx context.Context, req map[string]interfac
 			return errors.New("ws subscribe failed")
 		}
 
+		// If the context was canceled while the subscribe result was in flight,
+		// prefer the cancellation outcome and best-effort unsubscribe. This
+		// avoids nondeterministic select behavior when ctx.Done() and respCh are
+		// both ready at the same time.
+		if err := ctx.Err(); err != nil {
+			if subscriptionID, subErr := subscriptionIDFromResult(res.msg.Result, id); subErr == nil {
+				go func() {
+					unsubCtx, cancel := context.WithTimeout(context.Background(), wsUnsubscribeTimeout)
+					defer cancel()
+					_ = c.unsubscribe(unsubCtx, subscriptionID)
+				}()
+			}
+			return err
+		}
+
 		// Track subscription for auto-reconnect
 		c.mu.Lock()
 		c.activeSubs[sub.ID()] = subscriptionRequest{
