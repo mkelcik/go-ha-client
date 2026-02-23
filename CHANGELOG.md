@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [v2.0.0-beta.19]
+
 ### Added
 - Debug logging for REST and WebSocket requests/responses.
 - Runnable examples for REST and WebSocket flows under `examples/`.
@@ -36,6 +38,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - `NewClient` now falls back to `http.DefaultClient` when a nil HTTP client is provided.
 - WebSocket connect/close flow now guards against close/connect races.
 - WebSocket reconnect logic validates backoff inputs and restores subscriptions more reliably.
+- WebSocket subscribe cancellation now deterministically returns `context.Canceled` when cancel races with subscribe result, while still best-effort unsubscribing.
 
 ## [v2.0.0-beta.2]
 
