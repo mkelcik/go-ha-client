@@ -42,4 +42,6 @@ go run ./examples/rest_ping
 ## Notes
 - `examples/helpers_decode_event_data` is offline and does not require Home Assistant connection.
 - All other examples require valid Home Assistant host/token constants.
+- Use the exact Home Assistant `entity_id` in examples (for example `light.kitchen` or a longer generated ID like `light.light_janka_ambient_level_light_color_on_off`), not only the UI/friendly name shown on dashboards.
+- You can find the exact `entity_id` in Home Assistant under `Developer Tools -> States` or `Settings -> Devices & Services -> Entities`.
 - `WaitForState`, `WaitForStateEquals`, and `WaitForStateIn` can run in parallel from multiple goroutines after a single `ws.Connect`.

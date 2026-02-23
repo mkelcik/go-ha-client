@@ -173,6 +173,8 @@ The `examples` folder also includes:
 - `WithOnReconnect` and `WithOnReconnectError` callbacks are called synchronously from the reconnect loop.
 - Keep those callbacks short and non-blocking (offload heavy work to another goroutine if needed).
 - Use typed event helpers (`WSEvent.StateChanged`, `WSEvent.CallServiceEvent`) to avoid manual payload casting.
+- Event payloads use the real Home Assistant `entity_id` (for example `light.light_janka_ambient_level_light_color_on_off`), not the shorter UI/friendly name you may see in cards.
+- In Home Assistant, find the exact `entity_id` in `Developer Tools -> States` (field `entity_id`) or `Settings -> Devices & Services -> Entities` (entity detail view).
 
 ### Error handling
 Use sentinel errors with `errors.Is`:
