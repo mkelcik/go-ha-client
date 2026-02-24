@@ -30,11 +30,13 @@ The client follows official Home Assistant REST and WebSocket API docs.
 - [Release notes](RELEASE_NOTES.md)
 - [Migration guide](MIGRATION.md)
 
-### Production readiness checklist (beta)
-- Freeze the public API and tag `v2.0.0` (no breaking changes after that).
-- Document stability/support policy in README.
-- Add 1-2 WS integration tests (reconnect + subscribe + call_service end-to-end).
-- Prepare release notes and a short migration guide for v2.
+### Stability and Support Policy (v2)
+- `v2.0.0` is the first stable v2 release and freezes the public API for the `v2` major line.
+- `v2.x` releases may add new helpers/options and bug fixes, but will not introduce intentional breaking API changes.
+- Breaking API changes will be introduced only in a new major version (for example `v3`).
+- The package targets official Home Assistant REST and WebSocket APIs and follows their documented behavior where possible.
+- Minimum supported Go version is `1.24.13+` (see CI/tooling in this repository).
+- Security issues should be reported using the process in [`SECURITY.md`](SECURITY.md).
 
 ### Non-goals
 - Full coverage of all Home Assistant APIs (focus is official REST/WS docs).

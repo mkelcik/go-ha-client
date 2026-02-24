@@ -1,5 +1,11 @@
 # Migration Guide
 
+## v2.0.0-beta.x -> v2.0.0
+
+- No module path change (`github.com/mkelcik/go-ha-client/v2` stays the same).
+- No intentional breaking public API changes are introduced in `v2.0.0` relative to documented v2 beta APIs.
+- Upgrade by bumping the dependency version and rerunning tests in your integration environment.
+
 ## v1 -> v2
 
 1) Update module path
