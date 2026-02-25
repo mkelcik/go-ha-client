@@ -1,7 +1,7 @@
 # go-ha-client
 [![CI](https://github.com/mkelcik/go-ha-client/actions/workflows/ci.yml/badge.svg)](https://github.com/mkelcik/go-ha-client/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mkelcik/go-ha-client/v2.svg)](https://pkg.go.dev/github.com/mkelcik/go-ha-client/v2)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mkelcik/go-ha-client)](https://goreportcard.com/report/github.com/mkelcik/go-ha-client)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mkelcik/go-ha-client/v2)](https://goreportcard.com/report/github.com/mkelcik/go-ha-client/v2)
 
 Go client for Home Assistant REST API.
 This client targets the official REST API documentation:
