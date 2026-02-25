@@ -7,8 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"reflect"
-	"strings"
 	"time"
 )
 
@@ -16,6 +14,32 @@ const (
 	filterDateFormat = "2006-01-02T15:04:05-07:00"
 )
 
+// Common Home Assistant domain names for service calls.
+const (
+	DomainLight   = "light"
+	DomainSwitch  = "switch"
+	DomainScript  = "script"
+	DomainScene   = "scene"
+	DomainWeather = "weather"
+)
+
+// Common Home Assistant service names for service calls.
+const (
+	ServiceTurnOn      = "turn_on"
+	ServiceTurnOff     = "turn_off"
+	ServiceToggle      = "toggle"
+	ServiceGetForecast = "get_forecasts"
+)
+
+// Common Home Assistant event types.
+const (
+	EventTypeStateChanged       = "state_changed"
+	EventTypeCallService        = "call_service"
+	EventTypeHomeAssistantStart = "homeassistant_start"
+	EventTypeHomeAssistantStop  = "homeassistant_stop"
+)
+
+// Config represents the Home Assistant configuration.
 type Config struct {
 	Components   []string `json:"components"`
 	ConfigDir    string   `json:"config_dir"`
@@ -32,29 +56,62 @@ type Config struct {
 	} `json:"unit_system"`
 	Version               string   `json:"version"`
 	WhitelistExternalDirs []string `json:"whitelist_external_dirs"`
+	AllowlistExternalDirs []string `json:"allowlist_external_dirs"`
 }
 
-type DiscoveryInfo struct {
-	BaseUrl             string `json:"base_url"`
-	LocationName        string `json:"location_name"`
-	RequiresApiPassword bool   `json:"requires_api_password"`
-	Version             string `json:"version"`
-}
-
+// Events is a list of events.
 type Events []Event
 
+// Event represents a single event listener count.
 type Event struct {
 	Event         string `json:"event"`
 	ListenerCount int    `json:"listener_count"`
 }
 
+// Services is a list of service domains.
 type Services []ServiceDomain
 
+// ServiceDomain represents a service domain and its services.
 type ServiceDomain struct {
-	Domain   string             `json:"domain"`
-	Services map[string]Service `json:"services"`
+	Domain   string     `json:"domain"`
+	Services ServiceMap `json:"services"`
 }
 
+// ServiceMap is a map of services.
+type ServiceMap map[string]Service
+
+func (m *ServiceMap) UnmarshalJSON(b []byte) error {
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		*m = nil
+		return nil
+	}
+
+	switch trimmed[0] {
+	case '{':
+		var services map[string]Service
+		if err := json.Unmarshal(trimmed, &services); err != nil {
+			return err
+		}
+		*m = services
+		return nil
+	case '[':
+		var list []string
+		if err := json.Unmarshal(trimmed, &list); err != nil {
+			return err
+		}
+		services := make(map[string]Service, len(list))
+		for _, name := range list {
+			services[name] = Service{Name: name}
+		}
+		*m = services
+		return nil
+	default:
+		return fmt.Errorf("unexpected services JSON: %s", string(trimmed))
+	}
+}
+
+// Service represents a service definition.
 type Service struct {
 	Name        string                  `json:"name"`
 	Description string                  `json:"description"`
@@ -64,6 +121,7 @@ type Service struct {
 	} `json:"target"`
 }
 
+// ServiceField represents a field in a service definition.
 type ServiceField struct {
 	Advanced    bool                              `json:"advanced"`
 	Name        string                            `json:"name"`
@@ -77,8 +135,9 @@ type ServiceField struct {
 type StateChangesFilter struct {
 	StartTime              time.Time
 	EndTime                time.Time `json:"end_time"`
-	FilterEntityId         string    `json:"filter_entity_id"`
+	FilterEntityID         string    `json:"filter_entity_id"`
 	MinimalResponse        bool      `json:"minimal_response"`
+	NoAttributes           bool      `json:"no_attributes"`
 	SignificantChangesOnly bool      `json:"significant_changes_only"`
 }
 
@@ -86,16 +145,19 @@ func (f *StateChangesFilter) String() string {
 	return createQueryString(f.StartTime, f)
 }
 
+// StateChanges is a list of state changes for entities.
 type StateChanges [][]EntityChange
 
+// EntityChange represents a change in an entity's state.
 type EntityChange struct {
-	EntityId    string                 `json:"entity_id"`
+	EntityID    string                 `json:"entity_id"`
 	State       string                 `json:"state"`
 	Attributes  map[string]interface{} `json:"attributes"`
 	LastChanged time.Time              `json:"last_changed"`
 	LastUpdated time.Time              `json:"last_updated"`
 }
 
+// GetFriendlyName returns the friendly name of the entity if available.
 func (e *EntityChange) GetFriendlyName() string {
 	v, ok := e.Attributes["friendly_name"]
 	if !ok {
@@ -110,74 +172,135 @@ func (e *EntityChange) GetFriendlyName() string {
 	return name
 }
 
+// LogbookRecords is a list of logbook records.
 type LogbookRecords []LogbookRecord
 
+// LogbookRecord represents a single logbook entry.
 type LogbookRecord struct {
-	When     time.Time `json:"when"`
-	Name     string    `json:"name"`
-	State    string    `json:"state"`
-	EntityId string    `json:"entity_id"`
-	Icon     string    `json:"icon"`
+	When          time.Time `json:"when"`
+	Name          string    `json:"name"`
+	Message       string    `json:"message"`
+	Domain        string    `json:"domain"`
+	EntityID      string    `json:"entity_id"`
+	ContextUserID *string   `json:"context_user_id"`
+	State         string    `json:"state"`
+	Icon          string    `json:"icon"`
 }
 
+// LogbookFilter defines filter for logbook queries.
 type LogbookFilter struct {
 	StartTime time.Time
 	EndTime   time.Time `json:"end_time"`
-	EntityId  string    `json:"entity"`
+	EntityID  string    `json:"entity"`
 }
 
 func (f *LogbookFilter) String() string {
 	return createQueryString(f.StartTime, f)
 }
 
+// StateEntities is a list of state entities.
 type StateEntities []StateEntity
 
+// Calendars is a list of calendars.
+type Calendars []Calendar
+
+// Calendar represents a calendar entity.
+type Calendar struct {
+	Name     string `json:"name"`
+	EntityID string `json:"entity_id"`
+}
+
+// CalendarEvents is a list of calendar events.
+type CalendarEvents []CalendarEvent
+
+// CalendarEvent represents a single calendar event.
+type CalendarEvent struct {
+	Summary     string            `json:"summary"`
+	Description string            `json:"description,omitempty"`
+	Location    string            `json:"location,omitempty"`
+	UID         string            `json:"uid,omitempty"`
+	Start       CalendarEventTime `json:"start"`
+	End         CalendarEventTime `json:"end"`
+}
+
+// CalendarEventTime represents the time of a calendar event.
+type CalendarEventTime struct {
+	Date     string `json:"date,omitempty"`
+	DateTime string `json:"dateTime,omitempty"`
+	TimeZone string `json:"timeZone,omitempty"`
+}
+
+// StateEntity represents the state of an entity.
 type StateEntity struct {
-	EntityId    string                 `json:"entity_id"`
+	EntityID    string                 `json:"entity_id"`
 	State       string                 `json:"state"`
 	Attributes  map[string]interface{} `json:"attributes"`
 	LastChanged time.Time              `json:"last_changed"`
 	LastUpdated time.Time              `json:"last_updated"`
 	Context     struct {
-		Id       string `json:"id"`
-		ParentId string `json:"parent_id"`
-		UserId   string `json:"user_id"`
+		ID       string `json:"id"`
+		ParentID string `json:"parent_id"`
+		UserID   string `json:"user_id"`
 	} `json:"context"`
 }
 
+// PlainText represents plain text response.
 type PlainText string
 
 // NewTurnLightOnCmd is helper for turning light on
-func NewTurnLightOnCmd(entityId string) DefaultServiceCmd {
-	return DefaultServiceCmd{
-		Service:  "turn_on",
-		Domain:   "light",
-		EntityId: entityId,
-	}
+func NewTurnLightOnCmd(entityID string) DefaultServiceCmd {
+	return NewTurnOnCmd(DomainLight, entityID)
 }
 
 // NewTurnLightOffCmd is helper for turning light off
-func NewTurnLightOffCmd(entityId string) DefaultServiceCmd {
+func NewTurnLightOffCmd(entityID string) DefaultServiceCmd {
+	return NewTurnOffCmd(DomainLight, entityID)
+}
+
+// NewToggleLightCmd is helper for toggling light state.
+func NewToggleLightCmd(entityID string) DefaultServiceCmd {
+	return NewToggleCmd(DomainLight, entityID)
+}
+
+// NewTurnOnCmd is helper for turn_on service calls for any domain.
+func NewTurnOnCmd(domain, entityID string) DefaultServiceCmd {
 	return DefaultServiceCmd{
-		Service:  "turn_off",
-		Domain:   "light",
-		EntityId: entityId,
+		Service:  ServiceTurnOn,
+		Domain:   domain,
+		EntityID: entityID,
 	}
 }
 
-// NewToggleLightTCmd is helper for turning light off
-func NewToggleLightTCmd(entityId string) DefaultServiceCmd {
+// NewTurnOffCmd is helper for turn_off service calls for any domain.
+func NewTurnOffCmd(domain, entityID string) DefaultServiceCmd {
 	return DefaultServiceCmd{
-		Service:  "toggle",
-		Domain:   "light",
-		EntityId: entityId,
+		Service:  ServiceTurnOff,
+		Domain:   domain,
+		EntityID: entityID,
 	}
 }
 
+// NewToggleCmd is helper for toggle service calls for any domain.
+func NewToggleCmd(domain, entityID string) DefaultServiceCmd {
+	return DefaultServiceCmd{
+		Service:  ServiceToggle,
+		Domain:   domain,
+		EntityID: entityID,
+	}
+}
+
+// NewServiceDataEntityID builds service_data payload with a single entity_id.
+func NewServiceDataEntityID(entityID string) map[string]interface{} {
+	return map[string]interface{}{
+		"entity_id": entityID,
+	}
+}
+
+// DefaultServiceCmd is a default implementation of a service call command.
 type DefaultServiceCmd struct {
 	Service  string `json:"-"`
 	Domain   string `json:"-"`
-	EntityId string `json:"entity_id"`
+	EntityID string `json:"entity_id"`
 }
 
 type newEventRising struct {
@@ -188,32 +311,70 @@ type templateRequest struct {
 	Template string `json:"template"`
 }
 
+// ConfigurationCheckResult represents the result of a configuration check.
 type ConfigurationCheckResult struct {
 	Errors *string `json:"errors"`
 	Result string  `json:"result"`
 }
 
+// IntentRequest represents a request to handle an intent.
+type IntentRequest struct {
+	Name string                 `json:"name"`
+	Data map[string]interface{} `json:"data,omitempty"`
+}
+
+// IntentResponse represents the response from intent handling.
+type IntentResponse struct {
+	Response map[string]interface{} `json:"response"`
+}
+
+// ServiceCallResponse represents the response from a service call when return_response is requested.
+type ServiceCallResponse struct {
+	ChangedStates   StateEntities              `json:"changed_states"`
+	StateChanges    StateEntities              `json:"state_changes,omitempty"`
+	ServiceResponse map[string]json.RawMessage `json:"service_response"`
+}
+
+// WeatherForecastRequest represents a request for weather forecast.
+type WeatherForecastRequest struct {
+	EntityID string `json:"entity_id"`
+	Type     string `json:"type,omitempty"`
+}
+
+// WeatherForecasts represents a list of weather forecasts.
+type WeatherForecasts struct {
+	Forecast []WeatherForecast `json:"forecast"`
+}
+
+// WeatherForecast represents a single weather forecast entry.
+type WeatherForecast map[string]interface{}
+
+// StateResponse represents the response from creating or updating a state.
 type StateResponse struct {
 	State
 	CreateCode  int       `json:"-"`
-	EntityId    string    `json:"entity_id"`
+	EntityID    string    `json:"entity_id"`
 	LastChanged time.Time `json:"last_changed"`
 	LastUpdated time.Time `json:"last_updated"`
 }
 
+// Created returns true if the state was created.
 func (s StateResponse) Created() bool {
 	return s.CreateCode == http.StatusCreated
 }
 
+// Updated returns true if the state was updated.
 func (s StateResponse) Updated() bool {
 	return s.CreateCode == http.StatusOK
 }
 
+// State represents the core state data.
 type State struct {
 	State      string                 `json:"state"`
 	Attributes map[string]interface{} `json:"attributes"`
 }
 
+// Reader returns an io.Reader for the service command body.
 func (c DefaultServiceCmd) Reader() io.Reader {
 	b, _ := json.Marshal(c)
 	return bytes.NewBuffer(b)
@@ -224,7 +385,7 @@ func createQueryString(startTime time.Time, filter interface{}) string {
 		return ""
 	}
 
-	// hack because start time is different (https://developers.home-assistant.io/docs/api/rest)
+	// Home Assistant expects start time as a path segment on the history/logbook endpoints.
 	startTimeString := ""
 	if !startTime.IsZero() {
 		startTimeString = fmt.Sprintf("/%s", startTime.Format(filterDateFormat))
@@ -232,25 +393,59 @@ func createQueryString(startTime time.Time, filter interface{}) string {
 
 	queryParams := createParamMap(filter)
 
-	if len(queryParams) == 0 {
-		return ""
+	encodedParams := queryParams.Encode()
+	if encodedParams == "" {
+		return startTimeString
 	}
-	return fmt.Sprintf("%s?%s", startTimeString, strings.Join(queryParams, "&"))
+	return fmt.Sprintf("%s?%s", startTimeString, encodedParams)
 }
 
-func createParamMap(filter interface{}) []string {
-	queryParams := make([]string, 0, 10)
-	v := reflect.ValueOf(filter).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		paramName := v.Type().Field(i).Tag.Get("json")
-		if paramName != "" && !v.Field(i).IsZero() {
-			v := v.Field(i).Interface()
-			if t, ok := v.(time.Time); ok {
-				v = url.QueryEscape(t.Format(filterDateFormat))
-			}
+func createParamMap(filter interface{}) url.Values {
+	switch f := filter.(type) {
+	case *StateChangesFilter:
+		return createStateChangesParams(f)
+	case *LogbookFilter:
+		return createLogbookParams(f)
+	default:
+		return nil
+	}
+}
 
-			queryParams = append(queryParams, fmt.Sprintf("%s=%s", paramName, v))
-		}
+func createStateChangesParams(filter *StateChangesFilter) url.Values {
+	if filter == nil {
+		return nil
+	}
+
+	queryParams := url.Values{}
+	if !filter.EndTime.IsZero() {
+		queryParams.Add("end_time", filter.EndTime.Format(filterDateFormat))
+	}
+	if filter.FilterEntityID != "" {
+		queryParams.Add("filter_entity_id", filter.FilterEntityID)
+	}
+	if filter.MinimalResponse {
+		queryParams.Add("minimal_response", "true")
+	}
+	if filter.NoAttributes {
+		queryParams.Add("no_attributes", "true")
+	}
+	if filter.SignificantChangesOnly {
+		queryParams.Add("significant_changes_only", "true")
+	}
+	return queryParams
+}
+
+func createLogbookParams(filter *LogbookFilter) url.Values {
+	if filter == nil {
+		return nil
+	}
+
+	queryParams := url.Values{}
+	if !filter.EndTime.IsZero() {
+		queryParams.Add("end_time", filter.EndTime.Format(filterDateFormat))
+	}
+	if filter.EntityID != "" {
+		queryParams.Add("entity", filter.EntityID)
 	}
 	return queryParams
 }
