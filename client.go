@@ -136,11 +136,15 @@ func NewClient(host string, opts ...Option) (*Client, error) {
 	httpClient := config.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{
-			Timeout: config.Timeout,
+			Timeout:   config.Timeout,
+			Transport: cloneHTTPTransport(nil),
 		}
-	} else if config.timeoutSet {
+	} else {
 		cloned := *httpClient
-		cloned.Timeout = config.Timeout
+		if config.timeoutSet {
+			cloned.Timeout = config.Timeout
+		}
+		cloned.Transport = cloneHTTPTransport(httpClient.Transport)
 		httpClient = &cloned
 	}
 
@@ -148,6 +152,21 @@ func NewClient(host string, opts ...Option) (*Client, error) {
 		config:     config,
 		httpClient: httpClient,
 	}, nil
+}
+
+func cloneHTTPTransport(rt http.RoundTripper) http.RoundTripper {
+	if rt == nil {
+		if defaultTransport, ok := http.DefaultTransport.(*http.Transport); ok {
+			return defaultTransport.Clone()
+		}
+		return nil
+	}
+
+	if transport, ok := rt.(*http.Transport); ok && transport != nil {
+		return transport.Clone()
+	}
+
+	return rt
 }
 
 // NewClientWithDefaults creates a client using default settings and token auth.

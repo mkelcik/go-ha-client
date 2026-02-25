@@ -121,6 +121,50 @@ func TestNewClientWithTimeoutOverridesCustomHTTPClientTimeout(t *testing.T) {
 	}
 }
 
+func TestNewClientUsesPrivateDefaultTransport(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient("http://example.com", WithToken("token"))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	transport, ok := client.httpClient.Transport.(*http.Transport)
+	if !ok || transport == nil {
+		t.Fatalf("expected private *http.Transport, got %T", client.httpClient.Transport)
+	}
+	if transport == http.DefaultTransport {
+		t.Fatalf("expected transport clone, got shared http.DefaultTransport")
+	}
+}
+
+func TestNewClientClonesCustomHTTPTransport(t *testing.T) {
+	t.Parallel()
+
+	baseTransport := &http.Transport{MaxIdleConns: 13}
+	baseClient := &http.Client{Transport: baseTransport}
+
+	client, err := NewClient("http://example.com", WithToken("token"), WithHTTPClient(baseClient))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	if client.httpClient == baseClient {
+		t.Fatalf("expected http client clone, got original client")
+	}
+
+	clonedTransport, ok := client.httpClient.Transport.(*http.Transport)
+	if !ok || clonedTransport == nil {
+		t.Fatalf("expected cloned *http.Transport, got %T", client.httpClient.Transport)
+	}
+	if clonedTransport == baseTransport {
+		t.Fatalf("expected transport clone, got original transport")
+	}
+	if baseClient.Transport != baseTransport {
+		t.Fatalf("expected original client transport untouched")
+	}
+}
+
 func TestNewClientWithDefaults(t *testing.T) {
 	t.Parallel()
 
