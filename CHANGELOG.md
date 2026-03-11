@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Changed
+- Bump minimum Go version, toolchain, and CI from `1.24.13` to `1.25.8`.
+
+### Fixed
+- Address standard library vulnerability findings from `govulncheck` by running on Go `1.25.8` (fixes include GO-2026-4601 and GO-2026-4602).
+
 ## [v2.0.0-beta.19]
 
 ### Added
