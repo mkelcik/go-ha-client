@@ -13,7 +13,7 @@ https://developers.home-assistant.io/docs/api/websocket
 The client follows official Home Assistant REST and WebSocket API docs.
 
 ### Requirements
-- Go `1.25.8+`
+- Go `1.25.9+`
 - Home Assistant with long-lived access token
 
 ### Get a Home Assistant token
@@ -35,7 +35,7 @@ The client follows official Home Assistant REST and WebSocket API docs.
 - `v2.x` releases may add new helpers/options and bug fixes, but will not introduce intentional breaking API changes.
 - Breaking API changes will be introduced only in a new major version (for example `v3`).
 - The package targets official Home Assistant REST and WebSocket APIs and follows their documented behavior where possible.
-- Minimum supported Go version is `1.25.8+` (see CI/tooling in this repository).
+- Minimum supported Go version is `1.25.9+` (see CI/tooling in this repository).
 - Security issues should be reported using the process in [`SECURITY.md`](SECURITY.md).
 
 ### Non-goals
