@@ -1,5 +1,29 @@
 # Release Notes
 
+## v2.1.1
+
+Security and tooling maintenance release for `v2`.
+
+### Highlights
+- Bump minimum Go version, module toolchain, and CI runtime from `1.25.8` to `1.25.9`.
+- Resolve remaining reachable `govulncheck` findings from the Go standard library by running/building with patched Go release:
+  - GO-2026-4946 (`crypto/x509`)
+  - GO-2026-4947 (`crypto/x509`)
+  - GO-2026-4870 (`crypto/tls`)
+
+### Compatibility
+- No public API changes.
+- No import path changes (`github.com/mkelcik/go-ha-client/v2`).
+- Existing `v2.x` integrations should continue to work without code changes.
+
+### Upgrade Notes
+- Ensure local/dev/CI environments use Go `1.25.9+`.
+- If your pipeline pins Go patch versions, update them to `1.25.9` or newer.
+
+### Verification Summary
+- `go test ./...` passes.
+- `govulncheck ./...` reports no reachable vulnerabilities on Go `1.25.9`.
+
 ## v2.1.0
 
 Security and tooling maintenance release for `v2`.

@@ -5,7 +5,7 @@ Thanks for contributing to `go-ha-client`!
 ## Development setup
 
 Requirements:
-- Go `1.25.8+`
+- Go `1.25.9+`
 - Make
 
 Clone and run checks:
