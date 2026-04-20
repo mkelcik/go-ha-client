@@ -162,6 +162,14 @@ Recommended first runs:
 - [`examples/helpers_light_commands`](examples/helpers_light_commands) - quick tour of command/entity helper functions.
 - [`examples/helpers_decode_event_data`](examples/helpers_decode_event_data) - simple `DecodeEventData` helper demo (offline).
 
+WebSocket command coverage (added in v2.2.0):
+- [`examples/ws_panels`](examples/ws_panels) - list registered UI panels with `GetPanels`.
+- [`examples/ws_validate_config`](examples/ws_validate_config) - validate trigger/condition/action configs with `ValidateConfig` (valid and invalid cases).
+- [`examples/ws_entity_registry`](examples/ws_entity_registry) - fetch the UI-optimised entity registry with `ListEntityRegistryForDisplay`.
+- [`examples/ws_expose_entity`](examples/ws_expose_entity) - list and set voice-assistant exposure with `ListExposedEntities` / `ExposeEntity`.
+- [`examples/ws_target_helpers`](examples/ws_target_helpers) - resolve targets and inspect applicable triggers/conditions/services.
+- [`examples/ws_supported_features`](examples/ws_supported_features) - opt-in message coalescing via `DeclareSupportedFeatures`.
+
 The `examples` folder also includes:
 - Template rendering
 - History query builder usage
@@ -170,7 +178,6 @@ The `examples` folder also includes:
 - CallServiceForEntity helper usage (REST and WebSocket)
 - State-changed subscription helpers for single or multiple entities
 - Typed call_service event decoding helper usage
-- Full WebSocket command coverage: panels, config validation, entity registry, voice-assistant expose, target helpers, supported features
 
 ### Supported WebSocket commands
 The client exposes typed helpers for every command documented in the official
