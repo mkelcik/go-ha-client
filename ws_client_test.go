@@ -1265,3 +1265,591 @@ func newWSTestServer(t *testing.T, errCh chan error, fn func(conn *websocket.Con
 	}))
 	return server
 }
+
+// handshakeAndServe performs the auth_required/auth/auth_ok handshake and then
+// delegates to the per-test handler. It is a small helper to keep new command
+// tests concise.
+func handshakeAndServe(errCh chan error, conn *websocket.Conn, handle func(req map[string]interface{}) (response map[string]interface{}, ok bool)) {
+	defer conn.Close()
+	_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+	_ = conn.ReadJSON(&map[string]interface{}{})
+	_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+	req := map[string]interface{}{}
+	if err := conn.ReadJSON(&req); err != nil {
+		reportHandlerErr(errCh, err)
+		return
+	}
+	resp, ok := handle(req)
+	if !ok {
+		return
+	}
+	if resp == nil {
+		resp = map[string]interface{}{"type": "result", "success": true}
+	}
+	if _, has := resp["id"]; !has {
+		resp["id"] = req["id"]
+	}
+	_ = conn.WriteJSON(resp)
+}
+
+func TestWSClient_DeclareSupportedFeatures(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			if req["type"] != "supported_features" {
+				reportHandlerErr(errCh, errors.New("expected supported_features"))
+				return nil, false
+			}
+			features, ok := req["features"].(map[string]interface{})
+			if !ok || features["coalesce_messages"].(float64) != 1 {
+				reportHandlerErr(errCh, errors.New("expected coalesce_messages=1"))
+				return nil, false
+			}
+			return nil, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	if err := ws.DeclareSupportedFeatures(context.Background(), map[string]interface{}{
+		"coalesce_messages": 1,
+	}); err != nil {
+		t.Fatalf("declare supported features: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+// TestWSClient_Connect_NoAutoSupportedFeatures verifies Connect does not
+// automatically send supported_features (backwards compatibility).
+func TestWSClient_Connect_NoAutoSupportedFeatures(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		// Expect the next message to be ping, not supported_features.
+		msg := map[string]interface{}{}
+		if err := conn.ReadJSON(&msg); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		if msg["type"] == "supported_features" {
+			reportHandlerErr(errCh, errors.New("Connect must not send supported_features automatically"))
+			return
+		}
+		if msg["type"] != "ping" {
+			reportHandlerErr(errCh, errors.New("expected ping as first post-auth message"))
+			return
+		}
+		_ = conn.WriteJSON(map[string]interface{}{"type": "pong", "id": msg["id"]})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	if err := ws.Ping(context.Background()); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_GetPanels(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			if req["type"] != "get_panels" {
+				reportHandlerErr(errCh, errors.New("expected get_panels"))
+				return nil, false
+			}
+			return map[string]interface{}{
+				"type":    "result",
+				"success": true,
+				"result": map[string]interface{}{
+					"lovelace": map[string]interface{}{
+						"component_name": "lovelace",
+						"url_path":       "lovelace",
+						"require_admin":  false,
+					},
+					"config": map[string]interface{}{
+						"component_name": "config",
+						"url_path":       "config",
+						"icon":           "mdi:cog",
+						"require_admin":  true,
+					},
+				},
+			}, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	panels, err := ws.GetPanels(context.Background())
+	if err != nil {
+		t.Fatalf("get panels: %v", err)
+	}
+	if len(panels) != 2 {
+		t.Fatalf("expected 2 panels, got %d", len(panels))
+	}
+	if panels["config"].Icon != "mdi:cog" || !panels["config"].RequireAdmin {
+		t.Fatalf("unexpected config panel: %#v", panels["config"])
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_GetPanels_Error(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			return map[string]interface{}{
+				"type":    "result",
+				"success": false,
+				"error":   map[string]interface{}{"code": "unknown_error", "message": "boom"},
+			}, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	_, err := ws.GetPanels(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected ws error, got: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_ValidateConfig_Valid(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			if req["type"] != "validate_config" {
+				reportHandlerErr(errCh, errors.New("expected validate_config"))
+				return nil, false
+			}
+			if _, has := req["trigger"]; !has {
+				reportHandlerErr(errCh, errors.New("missing trigger in request"))
+				return nil, false
+			}
+			return map[string]interface{}{
+				"type":    "result",
+				"success": true,
+				"result": map[string]interface{}{
+					"trigger": map[string]interface{}{"valid": true},
+				},
+			}, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	res, err := ws.ValidateConfig(context.Background(), ValidateConfigRequest{
+		Trigger: map[string]interface{}{"platform": "state", "entity_id": "light.kitchen"},
+	})
+	if err != nil {
+		t.Fatalf("validate config: %v", err)
+	}
+	if res.Trigger == nil || !res.Trigger.Valid {
+		t.Fatalf("expected valid trigger, got %#v", res.Trigger)
+	}
+	if res.Condition != nil || res.Action != nil {
+		t.Fatalf("expected nil condition/action, got %#v", res)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_ValidateConfig_Invalid(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			return map[string]interface{}{
+				"type":    "result",
+				"success": true,
+				"result": map[string]interface{}{
+					"action": map[string]interface{}{"valid": false, "error": "unknown service foo.bar"},
+				},
+			}, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	res, err := ws.ValidateConfig(context.Background(), ValidateConfigRequest{
+		Action: map[string]interface{}{"service": "foo.bar"},
+	})
+	if err != nil {
+		t.Fatalf("validate config: %v", err)
+	}
+	if res.Action == nil || res.Action.Valid || res.Action.Error == "" {
+		t.Fatalf("expected invalid action, got %#v", res.Action)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_ExtractFromTarget(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			if req["type"] != "extract_from_target" {
+				reportHandlerErr(errCh, errors.New("expected extract_from_target"))
+				return nil, false
+			}
+			if req["expand_group"] != false {
+				reportHandlerErr(errCh, errors.New("expected expand_group=false"))
+				return nil, false
+			}
+			target, _ := req["target"].(map[string]interface{})
+			areas, _ := target["area_id"].([]interface{})
+			if len(areas) != 1 || areas[0] != "kitchen" {
+				reportHandlerErr(errCh, errors.New("unexpected target payload"))
+				return nil, false
+			}
+			return map[string]interface{}{
+				"type":    "result",
+				"success": true,
+				"result": map[string]interface{}{
+					"entity_ids": []string{"light.kitchen", "switch.kitchen"},
+					"area_ids":   []string{"kitchen"},
+				},
+			}, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	res, err := ws.ExtractFromTarget(context.Background(), TargetSelector{AreaID: []string{"kitchen"}}, false)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(res.EntityIDs) != 2 || res.EntityIDs[0] != "light.kitchen" {
+		t.Fatalf("unexpected entities: %#v", res.EntityIDs)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_ExtractFromTarget_EmptyTarget(t *testing.T) {
+	t.Parallel()
+
+	ws := NewWSClient(ClientConfig{Host: "http://localhost:8123", Token: "token"})
+	if _, err := ws.ExtractFromTarget(context.Background(), TargetSelector{}, false); !errors.Is(err, ErrEmptyTarget) {
+		t.Fatalf("expected ErrEmptyTarget, got: %v", err)
+	}
+}
+
+func TestWSClient_TargetHelpers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		expectType  string
+		call        func(ws *WSClient) error
+		expandGroup bool
+	}{
+		{
+			name:        "triggers",
+			expectType:  "get_triggers_for_target",
+			expandGroup: true,
+			call: func(ws *WSClient) error {
+				_, err := ws.GetTriggersForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, true)
+				return err
+			},
+		},
+		{
+			name:        "conditions",
+			expectType:  "get_conditions_for_target",
+			expandGroup: true,
+			call: func(ws *WSClient) error {
+				_, err := ws.GetConditionsForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, true)
+				return err
+			},
+		},
+		{
+			name:        "services",
+			expectType:  "get_services_for_target",
+			expandGroup: false,
+			call: func(ws *WSClient) error {
+				_, err := ws.GetServicesForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, false)
+				return err
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			errCh := make(chan error, 1)
+			srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+				handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+					if req["type"] != tc.expectType {
+						reportHandlerErr(errCh, errors.New("unexpected type: "+req["type"].(string)))
+						return nil, false
+					}
+					if req["expand_group"] != tc.expandGroup {
+						reportHandlerErr(errCh, errors.New("unexpected expand_group"))
+						return nil, false
+					}
+					return map[string]interface{}{
+						"type":    "result",
+						"success": true,
+						"result":  []map[string]interface{}{{"platform": "state"}},
+					}, true
+				})
+			})
+			defer srv.Close()
+
+			ws := newTestWSClient(t, srv.URL, "test-token")
+			if err := ws.Connect(context.Background()); err != nil {
+				t.Fatalf("connect: %v", err)
+			}
+			t.Cleanup(func() { _ = ws.Close() })
+
+			if err := tc.call(ws); err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+			assertNoHandlerErr(t, errCh)
+		})
+	}
+}
+
+func TestWSClient_TargetHelpers_EmptyTarget(t *testing.T) {
+	t.Parallel()
+
+	ws := NewWSClient(ClientConfig{Host: "http://localhost:8123", Token: "token"})
+	if _, err := ws.GetTriggersForTarget(context.Background(), TargetSelector{}, true); !errors.Is(err, ErrEmptyTarget) {
+		t.Fatalf("triggers: expected ErrEmptyTarget, got: %v", err)
+	}
+	if _, err := ws.GetConditionsForTarget(context.Background(), TargetSelector{}, true); !errors.Is(err, ErrEmptyTarget) {
+		t.Fatalf("conditions: expected ErrEmptyTarget, got: %v", err)
+	}
+	if _, err := ws.GetServicesForTarget(context.Background(), TargetSelector{}, true); !errors.Is(err, ErrEmptyTarget) {
+		t.Fatalf("services: expected ErrEmptyTarget, got: %v", err)
+	}
+}
+
+func TestWSClient_ListEntityRegistryForDisplay(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			if req["type"] != "config/entity_registry/list_for_display" {
+				reportHandlerErr(errCh, errors.New("expected config/entity_registry/list_for_display, got: "+req["type"].(string)))
+				return nil, false
+			}
+			return map[string]interface{}{
+				"type":    "result",
+				"success": true,
+				"result": map[string]interface{}{
+					"entities": []map[string]interface{}{
+						{"ei": "light.kitchen", "dn": "Kitchen"},
+					},
+				},
+			}, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	res, err := ws.ListEntityRegistryForDisplay(context.Background())
+	if err != nil {
+		t.Fatalf("list for display: %v", err)
+	}
+	if len(res.Entities) != 1 || res.Entities[0]["ei"] != "light.kitchen" {
+		t.Fatalf("unexpected entities: %#v", res.Entities)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_ListExposedEntities(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			if req["type"] != "homeassistant/expose_entity/list" {
+				reportHandlerErr(errCh, errors.New("expected expose_entity/list"))
+				return nil, false
+			}
+			return map[string]interface{}{
+				"type":    "result",
+				"success": true,
+				"result": map[string]interface{}{
+					"exposed_entities": map[string]interface{}{
+						"light.kitchen": map[string]interface{}{
+							"conversation": true,
+							"cloud.alexa":  false,
+						},
+					},
+				},
+			}, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	res, err := ws.ListExposedEntities(context.Background())
+	if err != nil {
+		t.Fatalf("list exposed: %v", err)
+	}
+	exposure := res.ExposedEntities["light.kitchen"]
+	if !exposure["conversation"] || exposure["cloud.alexa"] {
+		t.Fatalf("unexpected exposure: %#v", exposure)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_ExposeEntity(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			if req["type"] != "homeassistant/expose_entity" {
+				reportHandlerErr(errCh, errors.New("expected expose_entity"))
+				return nil, false
+			}
+			ids, _ := req["entity_ids"].([]interface{})
+			assistants, _ := req["assistants"].([]interface{})
+			if len(ids) != 1 || ids[0] != "light.kitchen" {
+				reportHandlerErr(errCh, errors.New("unexpected entity_ids"))
+				return nil, false
+			}
+			if len(assistants) != 1 || assistants[0] != "conversation" {
+				reportHandlerErr(errCh, errors.New("unexpected assistants"))
+				return nil, false
+			}
+			if req["should_expose"] != true {
+				reportHandlerErr(errCh, errors.New("expected should_expose=true"))
+				return nil, false
+			}
+			return nil, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	err := ws.ExposeEntity(context.Background(), ExposeEntityRequest{
+		Assistants:   []string{"conversation"},
+		EntityIDs:    []string{"light.kitchen"},
+		ShouldExpose: true,
+	})
+	if err != nil {
+		t.Fatalf("expose entity: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+func TestWSClient_ExposeEntity_EmptyEntityIDs(t *testing.T) {
+	t.Parallel()
+
+	ws := NewWSClient(ClientConfig{Host: "http://localhost:8123", Token: "token"})
+	err := ws.ExposeEntity(context.Background(), ExposeEntityRequest{
+		Assistants: []string{"conversation"},
+	})
+	if !errors.Is(err, ErrEmptyEntityID) {
+		t.Fatalf("expected ErrEmptyEntityID, got: %v", err)
+	}
+}
+
+// TestWSClient_Do_StillWorks_ForNewCommands verifies raw Do() continues to work
+// for the same commands that now have typed wrappers (backwards compatibility).
+func TestWSClient_Do_StillWorks_ForNewCommands(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		handshakeAndServe(errCh, conn, func(req map[string]interface{}) (map[string]interface{}, bool) {
+			if req["type"] != "get_panels" {
+				reportHandlerErr(errCh, errors.New("expected get_panels"))
+				return nil, false
+			}
+			return map[string]interface{}{
+				"type":    "result",
+				"success": true,
+				"result":  map[string]interface{}{"lovelace": map[string]interface{}{"component_name": "lovelace", "url_path": "lovelace"}},
+			}, true
+		})
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	raw := map[string]json.RawMessage{}
+	if err := ws.Do(context.Background(), map[string]interface{}{"type": "get_panels"}, &raw); err != nil {
+		t.Fatalf("raw do: %v", err)
+	}
+	if _, ok := raw["lovelace"]; !ok {
+		t.Fatalf("expected lovelace key in raw response: %#v", raw)
+	}
+	assertNoHandlerErr(t, errCh)
+}

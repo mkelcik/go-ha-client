@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [v2.2.0] - 2026-04-20
+
+### Added
+- Typed WebSocket helpers covering every command documented in the official WebSocket API:
+  - `WSClient.DeclareSupportedFeatures` (opt-in `supported_features`; Connect still never sends it automatically).
+  - `WSClient.GetPanels` (`get_panels`).
+  - `WSClient.ValidateConfig` (`validate_config`).
+  - `WSClient.ExtractFromTarget` (`extract_from_target`).
+  - `WSClient.GetTriggersForTarget`, `GetConditionsForTarget`, `GetServicesForTarget` (`get_*_for_target`).
+  - `WSClient.ListEntityRegistryForDisplay` (`config/entity_registry/list_for_display`).
+  - `WSClient.ListExposedEntities`, `WSClient.ExposeEntity` (`homeassistant/expose_entity[/list]`).
+- New public types in `types.go`: `Panel`, `Panels`, `TargetSelector`, `ValidateConfigRequest`, `ValidateConfigSectionResult`, `ValidateConfigResult`, `ExtractFromTargetResult`, `TriggerInfo`, `ConditionInfo`, `ServiceTargetInfo`, `DisplayEntity`, `DisplayEntityRegistry`, `ExposedEntitiesResult`, `ExposeEntityRequest`.
+- New sentinel `ErrEmptyTarget` for empty target selectors.
+- Runnable examples: `examples/ws_panels`, `examples/ws_validate_config`, `examples/ws_entity_registry`, `examples/ws_expose_entity`, `examples/ws_target_helpers`, `examples/ws_supported_features`.
+- README section listing the full WebSocket command → method mapping.
+
+### Notes
+- Purely additive release; all `v2.1.x` integrations keep working without changes.
+- `Connect()` handshake sequence is unchanged: `supported_features` remains opt-in via `DeclareSupportedFeatures`.
+
 ## [v2.1.2]
 
 ### Changed

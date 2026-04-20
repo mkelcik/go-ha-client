@@ -449,3 +449,102 @@ func createLogbookParams(filter *LogbookFilter) url.Values {
 	}
 	return queryParams
 }
+
+// Panel represents a single Home Assistant UI panel registration as returned by the
+// WebSocket command get_panels.
+type Panel struct {
+	ComponentName string                 `json:"component_name"`
+	Icon          string                 `json:"icon,omitempty"`
+	Title         string                 `json:"title,omitempty"`
+	Config        map[string]interface{} `json:"config,omitempty"`
+	URLPath       string                 `json:"url_path"`
+	RequireAdmin  bool                   `json:"require_admin"`
+}
+
+// Panels is the map of panel URL paths to panel registrations returned by get_panels.
+type Panels map[string]Panel
+
+// TargetSelector is the Home Assistant target selector used by service calls and
+// the WebSocket target helpers (extract_from_target, get_*_for_target).
+type TargetSelector struct {
+	EntityID []string `json:"entity_id,omitempty"`
+	DeviceID []string `json:"device_id,omitempty"`
+	AreaID   []string `json:"area_id,omitempty"`
+	FloorID  []string `json:"floor_id,omitempty"`
+	LabelID  []string `json:"label_id,omitempty"`
+}
+
+// IsEmpty reports whether the selector holds no references.
+func (t TargetSelector) IsEmpty() bool {
+	return len(t.EntityID) == 0 && len(t.DeviceID) == 0 && len(t.AreaID) == 0 &&
+		len(t.FloorID) == 0 && len(t.LabelID) == 0
+}
+
+// ValidateConfigRequest is the request body for the validate_config WebSocket command.
+// All three sections are optional and are validated independently.
+type ValidateConfigRequest struct {
+	Trigger   interface{} `json:"trigger,omitempty"`
+	Condition interface{} `json:"condition,omitempty"`
+	Action    interface{} `json:"action,omitempty"`
+}
+
+// ValidateConfigSectionResult is the validation outcome for a single section
+// (trigger, condition or action) in the validate_config response.
+type ValidateConfigSectionResult struct {
+	Valid bool   `json:"valid"`
+	Error string `json:"error,omitempty"`
+}
+
+// ValidateConfigResult is the full response for validate_config; any missing
+// sections in the request are nil in the result.
+type ValidateConfigResult struct {
+	Trigger   *ValidateConfigSectionResult `json:"trigger,omitempty"`
+	Condition *ValidateConfigSectionResult `json:"condition,omitempty"`
+	Action    *ValidateConfigSectionResult `json:"action,omitempty"`
+}
+
+// ExtractFromTargetResult lists the concrete entities/devices/areas/etc. that
+// a target selector resolves to, as returned by extract_from_target.
+type ExtractFromTargetResult struct {
+	EntityIDs []string `json:"entity_ids,omitempty"`
+	DeviceIDs []string `json:"device_ids,omitempty"`
+	AreaIDs   []string `json:"area_ids,omitempty"`
+	FloorIDs  []string `json:"floor_ids,omitempty"`
+	LabelIDs  []string `json:"label_ids,omitempty"`
+}
+
+// TriggerInfo describes a trigger applicable to a target as returned by
+// get_triggers_for_target. Kept as a flexible map because the shape depends
+// on the trigger platform.
+type TriggerInfo map[string]interface{}
+
+// ConditionInfo describes a condition applicable to a target as returned by
+// get_conditions_for_target.
+type ConditionInfo map[string]interface{}
+
+// ServiceTargetInfo describes a service applicable to a target as returned by
+// get_services_for_target.
+type ServiceTargetInfo map[string]interface{}
+
+// DisplayEntity is a lightweight entity registry entry optimised for UI display
+// (short field names, only enabled entities). Exact fields depend on the HA
+// version so it is exposed as a flexible map.
+type DisplayEntity map[string]interface{}
+
+// DisplayEntityRegistry is the response for config/entity_registry/list_for_display.
+type DisplayEntityRegistry struct {
+	Entities []DisplayEntity `json:"entities"`
+}
+
+// ExposedEntitiesResult is the response for homeassistant/expose_entity/list.
+// The outer key is an entity_id, the inner map is assistant name -> exposed.
+type ExposedEntitiesResult struct {
+	ExposedEntities map[string]map[string]bool `json:"exposed_entities"`
+}
+
+// ExposeEntityRequest is the request body for homeassistant/expose_entity.
+type ExposeEntityRequest struct {
+	Assistants   []string `json:"assistants"`
+	EntityIDs    []string `json:"entity_ids"`
+	ShouldExpose bool     `json:"should_expose"`
+}

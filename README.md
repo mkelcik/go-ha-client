@@ -170,6 +170,36 @@ The `examples` folder also includes:
 - CallServiceForEntity helper usage (REST and WebSocket)
 - State-changed subscription helpers for single or multiple entities
 - Typed call_service event decoding helper usage
+- Full WebSocket command coverage: panels, config validation, entity registry, voice-assistant expose, target helpers, supported features
+
+### Supported WebSocket commands
+The client exposes typed helpers for every command documented in the official
+[WebSocket API docs](https://developers.home-assistant.io/docs/api/websocket):
+
+| Command | Method |
+|---|---|
+| `auth` / `auth_ok` / `auth_invalid` | `WSClient.Connect` |
+| `ping` / `pong` | `WSClient.Ping` |
+| `supported_features` | `WSClient.DeclareSupportedFeatures` (opt-in) |
+| `get_states` | `WSClient.GetStates` |
+| `get_config` | `WSClient.GetConfig` |
+| `get_services` | `WSClient.GetServices` |
+| `get_panels` | `WSClient.GetPanels` |
+| `fire_event` | `WSClient.FireEvent` |
+| `call_service` | `WSClient.CallService`, `WSClient.CallServiceWithResponse` |
+| `subscribe_events` | `WSClient.SubscribeEvents` |
+| `subscribe_trigger` | `WSClient.SubscribeTrigger` |
+| `unsubscribe_events` | `WSSubscription.Unsubscribe` |
+| `validate_config` | `WSClient.ValidateConfig` |
+| `extract_from_target` | `WSClient.ExtractFromTarget` |
+| `get_triggers_for_target` | `WSClient.GetTriggersForTarget` |
+| `get_conditions_for_target` | `WSClient.GetConditionsForTarget` |
+| `get_services_for_target` | `WSClient.GetServicesForTarget` |
+| `config/entity_registry/list_for_display` | `WSClient.ListEntityRegistryForDisplay` |
+| `homeassistant/expose_entity/list` | `WSClient.ListExposedEntities` |
+| `homeassistant/expose_entity` | `WSClient.ExposeEntity` |
+
+Any additional or future commands can be sent directly via `WSClient.Do(ctx, req, &out)`.
 
 ### WebSocket notes
 - `WithOnReconnect` and `WithOnReconnectError` callbacks are called synchronously from the reconnect loop.

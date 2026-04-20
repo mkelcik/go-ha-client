@@ -33,6 +33,12 @@ go run ./examples/rest_ping
 - `examples/ws_auto_reconnect`: Subscribe to events with auto-reconnect callbacks.
 - `examples/ws_call_service_for_entity`: Use helper `CallServiceForEntity` with brightness.
 - `examples/ws_watch_call_service_events`: Watch `call_service` events and decode with `WSEvent.CallServiceEvent`.
+- `examples/ws_panels`: List registered UI panels (`GetPanels`).
+- `examples/ws_validate_config`: Validate trigger/condition/action configs (`ValidateConfig`).
+- `examples/ws_entity_registry`: Fetch the lightweight entity registry for UI display (`ListEntityRegistryForDisplay`).
+- `examples/ws_expose_entity`: List and set voice-assistant exposure (`ListExposedEntities`, `ExposeEntity`).
+- `examples/ws_target_helpers`: Resolve targets and inspect applicable triggers/conditions/services (`ExtractFromTarget`, `GetTriggersForTarget`, `GetConditionsForTarget`, `GetServicesForTarget`).
+- `examples/ws_supported_features`: Opt-in message coalescing via `DeclareSupportedFeatures`.
 
 ## Helper examples
 

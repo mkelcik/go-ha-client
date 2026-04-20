@@ -28,6 +28,8 @@ var (
 	ErrWSAuthFailed = errors.New("ws authentication failed")
 	// ErrWSInvalidRequest indicates a request is missing a required type.
 	ErrWSInvalidRequest = errors.New("ws request must include non-empty type")
+	// ErrEmptyTarget indicates a target selector has no references and cannot be used.
+	ErrEmptyTarget = errors.New("target selector must reference at least one entity/device/area/floor/label")
 )
 
 const wsUnsubscribeTimeout = 5 * time.Second
@@ -421,6 +423,131 @@ func (c *WSClient) CallServiceWithResponse(ctx context.Context, domain, service 
 		req["service_data"] = data
 	}
 	return result, c.Do(ctx, req, &result)
+}
+
+// DeclareSupportedFeatures sends a supported_features message advertising
+// optional client capabilities (for example {"coalesce_messages": 1}).
+// It is opt-in and never called automatically; invoke it explicitly after
+// Connect if you need the features it unlocks.
+func (c *WSClient) DeclareSupportedFeatures(ctx context.Context, features map[string]interface{}) error {
+	req := map[string]interface{}{
+		"type": "supported_features",
+	}
+	if features != nil {
+		req["features"] = features
+	}
+	return c.Do(ctx, req, nil)
+}
+
+// GetPanels returns the registered UI panels (get_panels).
+func (c *WSClient) GetPanels(ctx context.Context) (Panels, error) {
+	panels := Panels{}
+	return panels, c.Do(ctx, map[string]interface{}{
+		"type": "get_panels",
+	}, &panels)
+}
+
+// ValidateConfig validates trigger/condition/action configurations against the
+// running Home Assistant instance. All three sections are optional.
+func (c *WSClient) ValidateConfig(ctx context.Context, cfg ValidateConfigRequest) (ValidateConfigResult, error) {
+	result := ValidateConfigResult{}
+	req := map[string]interface{}{
+		"type": "validate_config",
+	}
+	if cfg.Trigger != nil {
+		req["trigger"] = cfg.Trigger
+	}
+	if cfg.Condition != nil {
+		req["condition"] = cfg.Condition
+	}
+	if cfg.Action != nil {
+		req["action"] = cfg.Action
+	}
+	return result, c.Do(ctx, req, &result)
+}
+
+// ExtractFromTarget resolves a target selector to concrete entity/device/area/etc. ids.
+// If expandGroup is true, group entities are expanded to their members.
+func (c *WSClient) ExtractFromTarget(ctx context.Context, target TargetSelector, expandGroup bool) (ExtractFromTargetResult, error) {
+	result := ExtractFromTargetResult{}
+	if target.IsEmpty() {
+		return result, ErrEmptyTarget
+	}
+	req := map[string]interface{}{
+		"type":         "extract_from_target",
+		"target":       target,
+		"expand_group": expandGroup,
+	}
+	return result, c.Do(ctx, req, &result)
+}
+
+// GetTriggersForTarget returns triggers applicable to a target (get_triggers_for_target).
+// Per docs, expand_group defaults to true for this command.
+func (c *WSClient) GetTriggersForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]TriggerInfo, error) {
+	var result []TriggerInfo
+	if target.IsEmpty() {
+		return nil, ErrEmptyTarget
+	}
+	return result, c.Do(ctx, buildTargetRequest("get_triggers_for_target", target, expandGroup), &result)
+}
+
+// GetConditionsForTarget returns conditions applicable to a target.
+func (c *WSClient) GetConditionsForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]ConditionInfo, error) {
+	var result []ConditionInfo
+	if target.IsEmpty() {
+		return nil, ErrEmptyTarget
+	}
+	return result, c.Do(ctx, buildTargetRequest("get_conditions_for_target", target, expandGroup), &result)
+}
+
+// GetServicesForTarget returns services applicable to a target.
+func (c *WSClient) GetServicesForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]ServiceTargetInfo, error) {
+	var result []ServiceTargetInfo
+	if target.IsEmpty() {
+		return nil, ErrEmptyTarget
+	}
+	return result, c.Do(ctx, buildTargetRequest("get_services_for_target", target, expandGroup), &result)
+}
+
+// ListEntityRegistryForDisplay returns a lightweight entity registry dump
+// optimised for UI display (short field names, disabled entities excluded).
+func (c *WSClient) ListEntityRegistryForDisplay(ctx context.Context) (DisplayEntityRegistry, error) {
+	result := DisplayEntityRegistry{}
+	return result, c.Do(ctx, map[string]interface{}{
+		"type": "config/entity_registry/list_for_display",
+	}, &result)
+}
+
+// ListExposedEntities returns the voice-assistant exposure map for every entity
+// (homeassistant/expose_entity/list).
+func (c *WSClient) ListExposedEntities(ctx context.Context) (ExposedEntitiesResult, error) {
+	result := ExposedEntitiesResult{}
+	return result, c.Do(ctx, map[string]interface{}{
+		"type": "homeassistant/expose_entity/list",
+	}, &result)
+}
+
+// ExposeEntity sets voice-assistant exposure for one or more entities.
+// assistants must contain at least one of "conversation", "cloud.alexa",
+// "cloud.google_assistant"; entityIDs must be non-empty.
+func (c *WSClient) ExposeEntity(ctx context.Context, req ExposeEntityRequest) error {
+	if len(req.EntityIDs) == 0 {
+		return ErrEmptyEntityID
+	}
+	return c.Do(ctx, map[string]interface{}{
+		"type":          "homeassistant/expose_entity",
+		"assistants":    req.Assistants,
+		"entity_ids":    req.EntityIDs,
+		"should_expose": req.ShouldExpose,
+	}, nil)
+}
+
+func buildTargetRequest(commandType string, target TargetSelector, expandGroup bool) map[string]interface{} {
+	return map[string]interface{}{
+		"type":         commandType,
+		"target":       target,
+		"expand_group": expandGroup,
+	}
 }
 
 func (c *WSClient) Do(ctx context.Context, req map[string]interface{}, out interface{}) error {

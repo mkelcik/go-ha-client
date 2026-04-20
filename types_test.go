@@ -260,3 +260,95 @@ func TestHistoryQueryBuilder(t *testing.T) {
 		t.Fatalf("missing significant_changes_only in %q", got)
 	}
 }
+
+func TestPanelsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	raw := `{"lovelace":{"component_name":"lovelace","url_path":"lovelace","require_admin":false},"config":{"component_name":"config","icon":"mdi:cog","url_path":"config","require_admin":true}}`
+	var panels Panels
+	if err := json.Unmarshal([]byte(raw), &panels); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if panels["config"].Icon != "mdi:cog" || !panels["config"].RequireAdmin {
+		t.Fatalf("unexpected config panel: %#v", panels["config"])
+	}
+	if panels["lovelace"].ComponentName != "lovelace" {
+		t.Fatalf("unexpected lovelace panel: %#v", panels["lovelace"])
+	}
+}
+
+func TestValidateConfigResultRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	raw := `{"trigger":{"valid":true},"action":{"valid":false,"error":"unknown"}}`
+	var res ValidateConfigResult
+	if err := json.Unmarshal([]byte(raw), &res); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if res.Trigger == nil || !res.Trigger.Valid {
+		t.Fatalf("unexpected trigger: %#v", res.Trigger)
+	}
+	if res.Action == nil || res.Action.Valid || res.Action.Error != "unknown" {
+		t.Fatalf("unexpected action: %#v", res.Action)
+	}
+	if res.Condition != nil {
+		t.Fatalf("expected nil condition, got %#v", res.Condition)
+	}
+}
+
+func TestTargetSelector_IsEmpty(t *testing.T) {
+	t.Parallel()
+
+	if !(TargetSelector{}).IsEmpty() {
+		t.Fatal("expected empty selector")
+	}
+	if (TargetSelector{EntityID: []string{"light.kitchen"}}).IsEmpty() {
+		t.Fatal("selector with entity should not be empty")
+	}
+	if (TargetSelector{FloorID: []string{"ground"}}).IsEmpty() {
+		t.Fatal("selector with floor should not be empty")
+	}
+}
+
+func TestTargetSelectorJSONOmitsEmpty(t *testing.T) {
+	t.Parallel()
+
+	sel := TargetSelector{AreaID: []string{"kitchen"}}
+	b, err := json.Marshal(sel)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(b) != `{"area_id":["kitchen"]}` {
+		t.Fatalf("unexpected json: %s", string(b))
+	}
+}
+
+func TestExposedEntitiesResultRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	raw := `{"exposed_entities":{"light.kitchen":{"conversation":true,"cloud.alexa":false}}}`
+	var res ExposedEntitiesResult
+	if err := json.Unmarshal([]byte(raw), &res); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	entry := res.ExposedEntities["light.kitchen"]
+	if !entry["conversation"] || entry["cloud.alexa"] {
+		t.Fatalf("unexpected exposure: %#v", entry)
+	}
+}
+
+func TestExtractFromTargetResultRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	raw := `{"entity_ids":["light.kitchen","switch.kitchen"],"area_ids":["kitchen"]}`
+	var res ExtractFromTargetResult
+	if err := json.Unmarshal([]byte(raw), &res); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(res.EntityIDs) != 2 || res.EntityIDs[1] != "switch.kitchen" {
+		t.Fatalf("unexpected entities: %#v", res.EntityIDs)
+	}
+	if len(res.AreaIDs) != 1 {
+		t.Fatalf("unexpected areas: %#v", res.AreaIDs)
+	}
+}

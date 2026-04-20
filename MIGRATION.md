@@ -1,5 +1,14 @@
 # Migration Guide
 
+## v2.1.x -> v2.2.0
+
+No migration required. `v2.2.0` is a purely additive release:
+- Adds typed WebSocket helpers for every command in the official WebSocket API docs (`GetPanels`, `ValidateConfig`, `ExtractFromTarget`, `GetTriggersForTarget`, `GetConditionsForTarget`, `GetServicesForTarget`, `ListEntityRegistryForDisplay`, `ListExposedEntities`, `ExposeEntity`, `DeclareSupportedFeatures`).
+- Adds new public types and a new sentinel error `ErrEmptyTarget`.
+- Does not change any existing method signatures, types, or the `Connect()` handshake (`supported_features` is opt-in, never sent automatically).
+
+Upgrade by bumping the dependency version and rerunning tests.
+
 ## v2.0.0-beta.x -> v2.0.0
 
 - No module path change (`github.com/mkelcik/go-ha-client/v2` stays the same).

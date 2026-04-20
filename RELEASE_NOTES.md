@@ -1,5 +1,30 @@
 # Release Notes
 
+## v2.2.0
+
+Parity release: the WebSocket client now exposes typed helpers for every command documented on the official [WebSocket API page](https://developers.home-assistant.io/docs/api/websocket).
+
+### Highlights
+- New typed methods on `WSClient`: `DeclareSupportedFeatures`, `GetPanels`, `ValidateConfig`, `ExtractFromTarget`, `GetTriggersForTarget`, `GetConditionsForTarget`, `GetServicesForTarget`, `ListEntityRegistryForDisplay`, `ListExposedEntities`, `ExposeEntity`.
+- New public types for requests and responses (see `CHANGELOG.md`).
+- New sentinel error `ErrEmptyTarget` for empty `TargetSelector` inputs.
+- Six new runnable examples under `examples/` covering every new method.
+- REST API coverage confirmed to be 100% against the official REST docs; no REST changes.
+
+### Compatibility
+- Purely additive. No public method signatures changed, no existing types changed.
+- `Connect()` handshake is unchanged; `supported_features` remains opt-in via `DeclareSupportedFeatures` so existing integrations behave identically.
+- `WSClient.Do(ctx, req, out)` continues to work for any command, including the ones that now have typed wrappers.
+- No `go.mod` changes (still `gorilla/websocket v1.5.3`, minimum Go `1.25.10`).
+
+### Upgrade Notes
+- No code changes required when upgrading from `v2.1.x` to `v2.2.0`.
+- If you were calling any of the new WebSocket commands through raw `Do(...)`, you can optionally migrate to the typed wrappers.
+
+### Verification Summary
+- `go build ./...`, `go vet ./...` pass.
+- `go test ./... -race -count=1` passes, including new per-command unit tests and regression tests (`TestWSClient_Connect_NoAutoSupportedFeatures`, `TestWSClient_Do_StillWorks_ForNewCommands`).
+
 ## v2.1.2
 
 Security and tooling maintenance release for `v2`.
