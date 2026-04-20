@@ -514,16 +514,19 @@ type ExtractFromTargetResult struct {
 }
 
 // TriggerInfo describes a trigger applicable to a target as returned by
-// get_triggers_for_target. Kept as a flexible map because the shape depends
-// on the trigger platform.
+// get_triggers_for_target. Kept as a flexible map because the fields
+// depend on the trigger platform; read values with type assertions,
+// for example t["platform"].(string).
 type TriggerInfo map[string]interface{}
 
 // ConditionInfo describes a condition applicable to a target as returned by
-// get_conditions_for_target.
+// get_conditions_for_target. Kept as a flexible map because the fields
+// depend on the condition type; read values with type assertions.
 type ConditionInfo map[string]interface{}
 
 // ServiceTargetInfo describes a service applicable to a target as returned by
-// get_services_for_target.
+// get_services_for_target. Kept as a flexible map because the fields
+// depend on the service/domain; read values with type assertions.
 type ServiceTargetInfo map[string]interface{}
 
 // DisplayEntity is a lightweight entity registry entry optimised for UI display

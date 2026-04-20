@@ -30,6 +30,8 @@ var (
 	ErrWSInvalidRequest = errors.New("ws request must include non-empty type")
 	// ErrEmptyTarget indicates a target selector has no references and cannot be used.
 	ErrEmptyTarget = errors.New("target selector must reference at least one entity/device/area/floor/label")
+	// ErrEmptyAssistants indicates an expose_entity request with no target assistants.
+	ErrEmptyAssistants = errors.New("expose_entity requires at least one assistant")
 )
 
 const wsUnsubscribeTimeout = 5 * time.Second
@@ -427,8 +429,16 @@ func (c *WSClient) CallServiceWithResponse(ctx context.Context, domain, service 
 
 // DeclareSupportedFeatures sends a supported_features message advertising
 // optional client capabilities (for example {"coalesce_messages": 1}).
-// It is opt-in and never called automatically; invoke it explicitly after
-// Connect if you need the features it unlocks.
+//
+// It is opt-in and never sent automatically from Connect, so existing
+// integrations keep an identical handshake sequence. Call it explicitly
+// right after Connect if you need the features it unlocks.
+//
+// Home Assistant documents the first user message as id=1, but any
+// incrementing id (auto-assigned by this client) is accepted in practice.
+//
+// See https://developers.home-assistant.io/docs/api/websocket for the
+// current list of supported feature keys.
 func (c *WSClient) DeclareSupportedFeatures(ctx context.Context, features map[string]interface{}) error {
 	req := map[string]interface{}{
 		"type": "supported_features",
@@ -531,6 +541,9 @@ func (c *WSClient) ListExposedEntities(ctx context.Context) (ExposedEntitiesResu
 // assistants must contain at least one of "conversation", "cloud.alexa",
 // "cloud.google_assistant"; entityIDs must be non-empty.
 func (c *WSClient) ExposeEntity(ctx context.Context, req ExposeEntityRequest) error {
+	if len(req.Assistants) == 0 {
+		return ErrEmptyAssistants
+	}
 	if len(req.EntityIDs) == 0 {
 		return ErrEmptyEntityID
 	}

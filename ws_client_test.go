@@ -1817,6 +1817,18 @@ func TestWSClient_ExposeEntity_EmptyEntityIDs(t *testing.T) {
 	}
 }
 
+func TestWSClient_ExposeEntity_EmptyAssistants(t *testing.T) {
+	t.Parallel()
+
+	ws := NewWSClient(ClientConfig{Host: "http://localhost:8123", Token: "token"})
+	err := ws.ExposeEntity(context.Background(), ExposeEntityRequest{
+		EntityIDs: []string{"light.kitchen"},
+	})
+	if !errors.Is(err, ErrEmptyAssistants) {
+		t.Fatalf("expected ErrEmptyAssistants, got: %v", err)
+	}
+}
+
 // TestWSClient_Do_StillWorks_ForNewCommands verifies raw Do() continues to work
 // for the same commands that now have typed wrappers (backwards compatibility).
 func TestWSClient_Do_StillWorks_ForNewCommands(t *testing.T) {

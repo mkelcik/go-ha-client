@@ -45,9 +45,12 @@ func main() {
 	}
 	fmt.Printf("valid trigger result: %+v\n", res.Trigger)
 
-	// Intentionally invalid action (missing service).
+	// Intentionally invalid action: references a service that does not exist.
+	// HA responds with {valid: false, error: "..."} for unknown services.
 	res, err = ws.ValidateConfig(ctx, ha.ValidateConfigRequest{
-		Action: map[string]interface{}{"service": ""},
+		Action: map[string]interface{}{
+			"service": "this_domain_does_not_exist.nope",
+		},
 	})
 	if err != nil {
 		log.Fatalf("validate invalid action: %v", err)
