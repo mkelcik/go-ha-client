@@ -10,7 +10,7 @@ gotchas that bite when you generate code without reading the full README.
 - Go module: `github.com/mkelcik/go-ha-client/v2` (v2 is the stable line).
 - Two clients in one package: REST `*Client` and WebSocket `*WSClient`.
 - Import alias used throughout examples and docs: `ha`.
-- Requires Go `1.25+` and a Home Assistant long-lived access token.
+- Requires Go `1.25.10+` and a Home Assistant long-lived access token.
 - Never invent entity IDs — they must come from the user's HA instance
   (`Developer Tools -> States`).
 
@@ -67,13 +67,21 @@ defer ws.Close()
 
 sub, err := ws.SubscribeStateChanged(ctx, "light.kitchen")
 if err != nil { return err }
-defer sub.Unsubscribe(ctx)
+defer func() {
+    // Use a fresh context so cleanup still runs after ctx is canceled.
+    cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    _ = sub.Unsubscribe(cleanupCtx)
+}()
 
 for {
     select {
     case <-ctx.Done():
         return ctx.Err()
-    case ev := <-sub.Events():
+    case ev, ok := <-sub.Events():
+        if !ok {
+            return nil // subscription closed
+        }
         data, ok, err := ev.StateChanged()
         if err != nil { return err }
         if !ok { continue }
@@ -196,18 +204,24 @@ Other sentinels: `ErrEmptyCalendarID`, `ErrEmptyTemplate`, `ErrEmptyService`,
 3. **One WS connection per process.** Call `ws.Connect` once and reuse it.
    `WaitForState*` and subscription helpers are safe to use concurrently on
    the same connected client.
-4. **Always `defer sub.Unsubscribe(ctx)`.** Subscriptions hold a slot in
-   Home Assistant; leaking them across reconnects wastes resources.
-5. **Reconnect callbacks are synchronous.** Inside `WithOnReconnect` /
+4. **Always unsubscribe — with a fresh context.** Subscriptions hold a slot
+   in Home Assistant; leaking them across reconnects wastes resources. Don't
+   pass the loop's `ctx` to `Unsubscribe` — once that context is canceled,
+   cleanup is canceled too. Use `context.Background()` (or a short fresh
+   timeout) so the unsubscribe message actually reaches HA.
+5. **`sub.Events()` can close.** When it does, the channel returns
+   zero-value `WSEvent`s forever. Always use `ev, ok := <-sub.Events()` and
+   exit the loop on `!ok`.
+6. **Reconnect callbacks are synchronous.** Inside `WithOnReconnect` /
    `WithOnReconnectError`, do not block — spawn a goroutine for any real work.
-6. **Event payloads stay as `map[string]interface{}`.** Use
+7. **Event payloads stay as `map[string]interface{}`.** Use
    `WSEvent.StateChanged()`, `WSEvent.CallServiceEvent()`, or
    `ha.DecodeEventData[T]` instead of manual casting.
-7. **REST `Host` must include scheme.** `http://ha.home`, not `ha.home`.
-8. **Auto-reconnect is opt-in.** Without `WithAutoReconnect(true)` a dropped
+8. **REST `Host` must include scheme.** `http://ha.home`, not `ha.home`.
+9. **Auto-reconnect is opt-in.** Without `WithAutoReconnect(true)` a dropped
    WS stays dropped; the next call returns an error.
-9. **Don't add `Co-Authored-By: Claude` or "Generated with Claude Code"** to
-   commits or PRs in this repo — see the project's commit history for tone.
+10. **Don't add `Co-Authored-By: Claude` or "Generated with Claude Code"** to
+    commits or PRs in this repo — see the project's commit history for tone.
 
 ## Running locally
 
