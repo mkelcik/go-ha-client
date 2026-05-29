@@ -491,28 +491,31 @@ func (c *WSClient) ExtractFromTarget(ctx context.Context, target TargetSelector,
 	return result, c.Do(ctx, req, &result)
 }
 
-// GetTriggersForTarget returns triggers applicable to a target (get_triggers_for_target).
-// Per docs, expand_group defaults to true for this command.
-func (c *WSClient) GetTriggersForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]TriggerInfo, error) {
-	var result []TriggerInfo
+// GetTriggersForTarget returns triggers applicable to a target as a slice of
+// "domain.trigger_name" identifiers (get_triggers_for_target). Per docs,
+// expand_group defaults to true for this command.
+func (c *WSClient) GetTriggersForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]string, error) {
+	var result []string
 	if target.IsEmpty() {
 		return nil, ErrEmptyTarget
 	}
 	return result, c.Do(ctx, buildTargetRequest("get_triggers_for_target", target, expandGroup), &result)
 }
 
-// GetConditionsForTarget returns conditions applicable to a target.
-func (c *WSClient) GetConditionsForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]ConditionInfo, error) {
-	var result []ConditionInfo
+// GetConditionsForTarget returns conditions applicable to a target as a slice of
+// "domain.condition_name" identifiers.
+func (c *WSClient) GetConditionsForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]string, error) {
+	var result []string
 	if target.IsEmpty() {
 		return nil, ErrEmptyTarget
 	}
 	return result, c.Do(ctx, buildTargetRequest("get_conditions_for_target", target, expandGroup), &result)
 }
 
-// GetServicesForTarget returns services applicable to a target.
-func (c *WSClient) GetServicesForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]ServiceTargetInfo, error) {
-	var result []ServiceTargetInfo
+// GetServicesForTarget returns services applicable to a target as a slice of
+// "domain.service_name" identifiers.
+func (c *WSClient) GetServicesForTarget(ctx context.Context, target TargetSelector, expandGroup bool) ([]string, error) {
+	var result []string
 	if target.IsEmpty() {
 		return nil, ErrEmptyTarget
 	}
@@ -757,48 +760,88 @@ func (c *WSClient) send(ctx context.Context, req map[string]interface{}) (wsInco
 
 func (c *WSClient) readLoop(conn *websocket.Conn) {
 	for {
-		msg := wsIncomingMessage{}
-		if err := conn.ReadJSON(&msg); err != nil {
-			// Connection lost
-			c.mu.Lock()
-			c.conn = nil
-			c.mu.Unlock()
-
-			// Explicitly close the connection to avoid leaks
-			_ = conn.Close()
-
-			if c.closed.Load() {
-				c.failAll(ErrWSClosed)
-				return
-			}
-
-			if c.reconnect.Enabled {
-				// Fail any pending requests (they won't be valid on new connection)
-				c.failPending(ErrWSClosed)
-				go c.reconnectLoop()
-				return
-			}
-
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) || errors.Is(err, io.EOF) {
-				c.failAll(ErrWSClosed)
-				return
-			}
-			c.failAll(err)
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			c.tearDownReadLoop(conn, err)
 			return
 		}
 
-		if isDebugEnabled(c.config.Logger, context.Background()) {
-			c.config.Logger.Debug("recv", "payload", formatWSLogPayload(msg))
+		// After supported_features enables coalesce_messages, HA may bundle
+		// multiple messages into a single JSON array frame; otherwise each
+		// frame is a single JSON object.
+		msgs, err := decodeIncomingFrame(data)
+		if err != nil {
+			// A malformed frame violates the WebSocket protocol contract; we
+			// cannot recover state for in-flight requests so treat it as fatal.
+			c.tearDownReadLoop(conn, err)
+			return
 		}
 
-		switch msg.Type {
+		for _, msg := range msgs {
+			if isDebugEnabled(c.config.Logger, context.Background()) {
+				c.config.Logger.Debug("recv", "payload", formatWSLogPayload(msg))
+			}
 
-		case "result", "pong":
-			c.dispatchPending(msg)
-		case "event":
-			c.dispatchEvent(msg)
+			switch msg.Type {
+			case "result", "pong":
+				c.dispatchPending(msg)
+			case "event":
+				c.dispatchEvent(msg)
+			}
 		}
 	}
+}
+
+// tearDownReadLoop releases the connection and surfaces err to any pending
+// callers. It mirrors the behavior the read loop had before coalesce-aware
+// decoding was added.
+func (c *WSClient) tearDownReadLoop(conn *websocket.Conn, err error) {
+	c.mu.Lock()
+	c.conn = nil
+	c.mu.Unlock()
+
+	_ = conn.Close()
+
+	if c.closed.Load() {
+		c.failAll(ErrWSClosed)
+		return
+	}
+
+	if c.reconnect.Enabled {
+		c.failPending(ErrWSClosed)
+		go c.reconnectLoop()
+		return
+	}
+
+	if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) || errors.Is(err, io.EOF) {
+		c.failAll(ErrWSClosed)
+		return
+	}
+	c.failAll(err)
+}
+
+// decodeIncomingFrame decodes a single WebSocket text frame, which is either a
+// single JSON object or a JSON array of objects (when coalesce_messages is on).
+func decodeIncomingFrame(data []byte) ([]wsIncomingMessage, error) {
+	for _, b := range data {
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case '[':
+			var batch []wsIncomingMessage
+			if err := json.Unmarshal(data, &batch); err != nil {
+				return nil, err
+			}
+			return batch, nil
+		default:
+			var msg wsIncomingMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				return nil, err
+			}
+			return []wsIncomingMessage{msg}, nil
+		}
+	}
+	return nil, nil
 }
 
 // failPending cancels all pending requests but leaves subscriptions intact.

@@ -340,15 +340,18 @@ func TestExposedEntitiesResultRoundTrip(t *testing.T) {
 func TestExtractFromTargetResultRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	raw := `{"entity_ids":["light.kitchen","switch.kitchen"],"area_ids":["kitchen"]}`
+	raw := `{"referenced_entities":["light.kitchen","switch.kitchen"],"referenced_areas":["kitchen"],"missing_devices":["dev-missing"]}`
 	var res ExtractFromTargetResult
 	if err := json.Unmarshal([]byte(raw), &res); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(res.EntityIDs) != 2 || res.EntityIDs[1] != "switch.kitchen" {
-		t.Fatalf("unexpected entities: %#v", res.EntityIDs)
+	if len(res.ReferencedEntities) != 2 || res.ReferencedEntities[1] != "switch.kitchen" {
+		t.Fatalf("unexpected entities: %#v", res.ReferencedEntities)
 	}
-	if len(res.AreaIDs) != 1 {
-		t.Fatalf("unexpected areas: %#v", res.AreaIDs)
+	if len(res.ReferencedAreas) != 1 {
+		t.Fatalf("unexpected areas: %#v", res.ReferencedAreas)
+	}
+	if len(res.MissingDevices) != 1 || res.MissingDevices[0] != "dev-missing" {
+		t.Fatalf("unexpected missing devices: %#v", res.MissingDevices)
 	}
 }

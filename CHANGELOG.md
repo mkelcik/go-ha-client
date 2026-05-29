@@ -15,7 +15,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - `WSClient.GetTriggersForTarget`, `GetConditionsForTarget`, `GetServicesForTarget` (`get_*_for_target`).
   - `WSClient.ListEntityRegistryForDisplay` (`config/entity_registry/list_for_display`).
   - `WSClient.ListExposedEntities`, `WSClient.ExposeEntity` (`homeassistant/expose_entity[/list]`).
-- New public types in `types.go`: `Panel`, `Panels`, `TargetSelector`, `ValidateConfigRequest`, `ValidateConfigSectionResult`, `ValidateConfigResult`, `ExtractFromTargetResult`, `TriggerInfo`, `ConditionInfo`, `ServiceTargetInfo`, `DisplayEntity`, `DisplayEntityRegistry`, `ExposedEntitiesResult`, `ExposeEntityRequest`.
+- New public types in `types.go`: `Panel`, `Panels`, `TargetSelector`, `ValidateConfigRequest`, `ValidateConfigSectionResult`, `ValidateConfigResult`, `ExtractFromTargetResult`, `DisplayEntity`, `DisplayEntityRegistry`, `ExposedEntitiesResult`, `ExposeEntityRequest`.
+- `readLoop` now accepts coalesced (JSON array) frames in addition to single-object frames, so `DeclareSupportedFeatures` with `coalesce_messages` is usable.
 - New sentinels `ErrEmptyTarget` and `ErrEmptyAssistants` for empty target selectors and `ExposeEntity` calls without target assistants.
 - Runnable examples: `examples/ws_panels`, `examples/ws_validate_config`, `examples/ws_entity_registry`, `examples/ws_expose_entity`, `examples/ws_target_helpers`, `examples/ws_supported_features`.
 - README section listing the full WebSocket command → method mapping.

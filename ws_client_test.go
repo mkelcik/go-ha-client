@@ -1552,8 +1552,9 @@ func TestWSClient_ExtractFromTarget(t *testing.T) {
 				"type":    "result",
 				"success": true,
 				"result": map[string]interface{}{
-					"entity_ids": []string{"light.kitchen", "switch.kitchen"},
-					"area_ids":   []string{"kitchen"},
+					"referenced_entities": []string{"light.kitchen", "switch.kitchen"},
+					"referenced_areas":    []string{"kitchen"},
+					"missing_floors":      []string{},
 				},
 			}, true
 		})
@@ -1570,8 +1571,8 @@ func TestWSClient_ExtractFromTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
-	if len(res.EntityIDs) != 2 || res.EntityIDs[0] != "light.kitchen" {
-		t.Fatalf("unexpected entities: %#v", res.EntityIDs)
+	if len(res.ReferencedEntities) != 2 || res.ReferencedEntities[0] != "light.kitchen" {
+		t.Fatalf("unexpected entities: %#v", res.ReferencedEntities)
 	}
 	assertNoHandlerErr(t, errCh)
 }
@@ -1591,34 +1592,31 @@ func TestWSClient_TargetHelpers(t *testing.T) {
 	tests := []struct {
 		name        string
 		expectType  string
-		call        func(ws *WSClient) error
+		call        func(ws *WSClient) ([]string, error)
 		expandGroup bool
 	}{
 		{
 			name:        "triggers",
 			expectType:  "get_triggers_for_target",
 			expandGroup: true,
-			call: func(ws *WSClient) error {
-				_, err := ws.GetTriggersForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, true)
-				return err
+			call: func(ws *WSClient) ([]string, error) {
+				return ws.GetTriggersForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, true)
 			},
 		},
 		{
 			name:        "conditions",
 			expectType:  "get_conditions_for_target",
 			expandGroup: true,
-			call: func(ws *WSClient) error {
-				_, err := ws.GetConditionsForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, true)
-				return err
+			call: func(ws *WSClient) ([]string, error) {
+				return ws.GetConditionsForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, true)
 			},
 		},
 		{
 			name:        "services",
 			expectType:  "get_services_for_target",
 			expandGroup: false,
-			call: func(ws *WSClient) error {
-				_, err := ws.GetServicesForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, false)
-				return err
+			call: func(ws *WSClient) ([]string, error) {
+				return ws.GetServicesForTarget(context.Background(), TargetSelector{EntityID: []string{"light.kitchen"}}, false)
 			},
 		},
 	}
@@ -1642,7 +1640,7 @@ func TestWSClient_TargetHelpers(t *testing.T) {
 					return map[string]interface{}{
 						"type":    "result",
 						"success": true,
-						"result":  []map[string]interface{}{{"platform": "state"}},
+						"result":  []string{"light.turned_on", "light.turned_off"},
 					}, true
 				})
 			})
@@ -1654,8 +1652,12 @@ func TestWSClient_TargetHelpers(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = ws.Close() })
 
-			if err := tc.call(ws); err != nil {
+			res, err := tc.call(ws)
+			if err != nil {
 				t.Fatalf("%s: %v", tc.name, err)
+			}
+			if len(res) != 2 || res[0] != "light.turned_on" {
+				t.Fatalf("%s: unexpected result %#v", tc.name, res)
 			}
 			assertNoHandlerErr(t, errCh)
 		})
@@ -1691,8 +1693,13 @@ func TestWSClient_ListEntityRegistryForDisplay(t *testing.T) {
 				"type":    "result",
 				"success": true,
 				"result": map[string]interface{}{
+					"entity_categories": map[string]interface{}{
+						"0": "config",
+						"1": "diagnostic",
+					},
 					"entities": []map[string]interface{}{
 						{"ei": "light.kitchen", "dn": "Kitchen"},
+						{"ei": "sensor.battery", "dn": "Battery", "ec": float64(1)},
 					},
 				},
 			}, true
@@ -1710,8 +1717,11 @@ func TestWSClient_ListEntityRegistryForDisplay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list for display: %v", err)
 	}
-	if len(res.Entities) != 1 || res.Entities[0]["ei"] != "light.kitchen" {
+	if len(res.Entities) != 2 || res.Entities[0]["ei"] != "light.kitchen" {
 		t.Fatalf("unexpected entities: %#v", res.Entities)
+	}
+	if res.EntityCategories["1"] != "diagnostic" {
+		t.Fatalf("unexpected entity_categories: %#v", res.EntityCategories)
 	}
 	assertNoHandlerErr(t, errCh)
 }
@@ -1862,6 +1872,124 @@ func TestWSClient_Do_StillWorks_ForNewCommands(t *testing.T) {
 	}
 	if _, ok := raw["lovelace"]; !ok {
 		t.Fatalf("expected lovelace key in raw response: %#v", raw)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+// TestWSClient_MalformedFrame_FailsPending verifies that a non-JSON frame is
+// treated as a fatal protocol error: pending callers get the decode error
+// rather than blocking until their context expires.
+func TestWSClient_MalformedFrame_FailsPending(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		req := map[string]interface{}{}
+		if err := conn.ReadJSON(&req); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		// Reply with garbage that is neither a JSON object nor array.
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("not-json"))
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err := ws.Do(ctx, map[string]interface{}{"type": "get_panels"}, nil)
+	if err == nil {
+		t.Fatalf("expected error from pending Do, got nil")
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Do should not block until ctx deadline on malformed frame: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
+// TestWSClient_CoalescedMessages exercises readLoop on a single text frame
+// that contains a JSON array of messages, which is what HA sends after
+// coalesce_messages is enabled via supported_features.
+func TestWSClient_CoalescedMessages(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		subReq := map[string]interface{}{}
+		if err := conn.ReadJSON(&subReq); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		if subReq["type"] != "subscribe_events" {
+			reportHandlerErr(errCh, errors.New("expected subscribe_events"))
+			return
+		}
+
+		batch := []map[string]interface{}{
+			{"id": subReq["id"], "type": "result", "success": true, "result": nil},
+			{"id": subReq["id"], "type": "event", "event": map[string]interface{}{
+				"event_type": "state_changed",
+				"data":       map[string]interface{}{"entity_id": "light.kitchen"},
+			}},
+			{"id": subReq["id"], "type": "event", "event": map[string]interface{}{
+				"event_type": "state_changed",
+				"data":       map[string]interface{}{"entity_id": "light.living_room"},
+			}},
+		}
+		payload, err := json.Marshal(batch)
+		if err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	sub, err := ws.SubscribeEvents(context.Background(), "state_changed")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	seen := make([]string, 0, 2)
+	for len(seen) < 2 {
+		select {
+		case ev := <-sub.Events():
+			if ev.EventType != "state_changed" {
+				t.Fatalf("unexpected event type: %s", ev.EventType)
+			}
+			seen = append(seen, string(ev.Data))
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout: only got %d coalesced events", len(seen))
+		}
+	}
+	if !strings.Contains(seen[0], "light.kitchen") || !strings.Contains(seen[1], "light.living_room") {
+		t.Fatalf("unexpected coalesced events: %v", seen)
 	}
 	assertNoHandlerErr(t, errCh)
 }

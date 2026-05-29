@@ -504,39 +504,33 @@ type ValidateConfigResult struct {
 }
 
 // ExtractFromTargetResult lists the concrete entities/devices/areas/etc. that
-// a target selector resolves to, as returned by extract_from_target.
+// a target selector resolves to, as returned by extract_from_target. Field
+// names match the HA WebSocket docs.
 type ExtractFromTargetResult struct {
-	EntityIDs []string `json:"entity_ids,omitempty"`
-	DeviceIDs []string `json:"device_ids,omitempty"`
-	AreaIDs   []string `json:"area_ids,omitempty"`
-	FloorIDs  []string `json:"floor_ids,omitempty"`
-	LabelIDs  []string `json:"label_ids,omitempty"`
+	ReferencedEntities []string `json:"referenced_entities,omitempty"`
+	ReferencedDevices  []string `json:"referenced_devices,omitempty"`
+	ReferencedAreas    []string `json:"referenced_areas,omitempty"`
+	MissingDevices     []string `json:"missing_devices,omitempty"`
+	MissingAreas       []string `json:"missing_areas,omitempty"`
+	MissingFloors      []string `json:"missing_floors,omitempty"`
+	MissingLabels      []string `json:"missing_labels,omitempty"`
 }
-
-// TriggerInfo describes a trigger applicable to a target as returned by
-// get_triggers_for_target. Kept as a flexible map because the fields
-// depend on the trigger platform; read values with type assertions,
-// for example t["platform"].(string).
-type TriggerInfo map[string]interface{}
-
-// ConditionInfo describes a condition applicable to a target as returned by
-// get_conditions_for_target. Kept as a flexible map because the fields
-// depend on the condition type; read values with type assertions.
-type ConditionInfo map[string]interface{}
-
-// ServiceTargetInfo describes a service applicable to a target as returned by
-// get_services_for_target. Kept as a flexible map because the fields
-// depend on the service/domain; read values with type assertions.
-type ServiceTargetInfo map[string]interface{}
 
 // DisplayEntity is a lightweight entity registry entry optimised for UI display
 // (short field names, only enabled entities). Exact fields depend on the HA
 // version so it is exposed as a flexible map.
+//
+// The "ec" key, when present, is an index into DisplayEntityRegistry.EntityCategories
+// rather than the category name itself.
 type DisplayEntity map[string]interface{}
 
 // DisplayEntityRegistry is the response for config/entity_registry/list_for_display.
+// EntityCategories maps the compact integer indices used in the "ec" field of
+// each DisplayEntity to the human-readable category name (e.g. "config", "diagnostic").
+// JSON object keys are strings, so the integer indices are exposed as strings here.
 type DisplayEntityRegistry struct {
-	Entities []DisplayEntity `json:"entities"`
+	EntityCategories map[string]string `json:"entity_categories,omitempty"`
+	Entities         []DisplayEntity   `json:"entities"`
 }
 
 // ExposedEntitiesResult is the response for homeassistant/expose_entity/list.

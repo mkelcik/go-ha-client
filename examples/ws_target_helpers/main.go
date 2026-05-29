@@ -39,7 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("extract from target: %v", err)
 	}
-	fmt.Printf("extracted entities: %v\n", extracted.EntityIDs)
+	fmt.Printf("extracted entities: %v\n", extracted.ReferencedEntities)
 
 	triggers, err := ws.GetTriggersForTarget(ctx, target, true)
 	if err != nil {
