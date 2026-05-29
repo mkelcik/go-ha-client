@@ -1,5 +1,20 @@
 # Release Notes
 
+## v2.2.2
+
+Documentation-only release: clarifies the rationale behind the minimum Go version.
+
+### Highlights
+- `README.md` `### Requirements` now explains that the minimum Go version (`1.25.10+`) is a deliberate security-first choice: the project tracks the **oldest still-supported Go minor line** at its **latest security patch**. Upstream Go only ships security fixes for the two most recent minor releases, and older patches of the same minor line may carry unfixed CVEs in `net`, `net/http`, or the TLS stack — all of which this client exercises on every request.
+- Patch-level Go bumps may land in patch releases of this library (as `v2.1.1` and `v2.1.2` already did).
+- CI continues to run `govulncheck` to enforce the policy.
+- Matching one-liner added to `### Stability and Support Policy (v2)` so both sections tell the same story.
+
+### Compatibility
+- Purely additive documentation change.
+- No code, no public API, no `go.mod` changes.
+- No upgrade steps required from `v2.2.1`.
+
 ## v2.2.1
 
 Documentation-only release: adds `AGENTS.md`, an integration guide tailored for AI coding agents using `github.com/mkelcik/go-ha-client/v2`.

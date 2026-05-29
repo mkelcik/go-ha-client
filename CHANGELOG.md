@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [v2.2.2] - 2026-05-29
+
+### Changed
+- `README.md`: expand the `### Requirements` section to explain that the minimum Go version is a deliberate security-first decision — the project tracks the oldest still-supported Go minor line at its latest security patch, and CI runs `govulncheck` to enforce it.
+- `README.md`: matching one-liner added to `### Stability and Support Policy (v2)` so both sections tell the same story.
+
+### Notes
+- Documentation-only release. No code, public API, or `go.mod` changes.
+
 ## [v2.2.1] - 2026-05-29
 
 ### Added
