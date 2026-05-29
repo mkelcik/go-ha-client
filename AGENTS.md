@@ -220,8 +220,9 @@ Other sentinels: `ErrEmptyCalendarID`, `ErrEmptyTemplate`, `ErrEmptyService`,
 8. **REST `Host` must include scheme.** `http://ha.home`, not `ha.home`.
 9. **Auto-reconnect is opt-in.** Without `WithAutoReconnect(true)` a dropped
    WS stays dropped; the next call returns an error.
-10. **Don't add `Co-Authored-By: Claude` or "Generated with Claude Code"** to
-    commits or PRs in this repo — see the project's commit history for tone.
+10. **Keep commit metadata human-authored.** Do not add AI-generated footers
+    or tool-specific attribution unless the maintainer explicitly asks for
+    them.
 
 ## Running locally
 
