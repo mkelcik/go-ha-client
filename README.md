@@ -16,6 +16,8 @@ The client follows official Home Assistant REST and WebSocket API docs.
 - Go `1.25.10+`
 - Home Assistant with long-lived access token
 
+The minimum Go version is a deliberate security-first choice: this project tracks the latest patched, supported Go release. Older patch versions of the same minor line may carry unfixed CVEs in `net`, `net/http`, or the TLS stack — all of which this client uses on every request. The minimum is bumped as soon as upstream Go ships a security patch, not on a fixed cadence, and CI runs `govulncheck` to keep this honest. See [`SECURITY.md`](SECURITY.md) for the reporting process.
+
 ### Get a Home Assistant token
 1. Open Home Assistant in the browser.
 2. Click your user profile (bottom-left).
@@ -35,7 +37,7 @@ The client follows official Home Assistant REST and WebSocket API docs.
 - `v2.x` releases may add new helpers/options and bug fixes, but will not introduce intentional breaking API changes.
 - Breaking API changes will be introduced only in a new major version (for example `v3`).
 - The package targets official Home Assistant REST and WebSocket APIs and follows their documented behavior where possible.
-- Minimum supported Go version is `1.25.10+` (see CI/tooling in this repository).
+- Minimum supported Go version is `1.25.10+` (see CI/tooling in this repository). The minimum tracks the latest patched, supported Go release — bumps are security-driven, not cosmetic, and may land in patch releases (see Requirements above).
 - Security issues should be reported using the process in [`SECURITY.md`](SECURITY.md).
 
 ### Non-goals
