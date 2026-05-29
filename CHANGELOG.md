@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [v2.2.1] - 2026-05-29
+
+### Added
+- `AGENTS.md`: integration guide for AI coding agents covering install, REST vs WebSocket decision, minimal client snippets, API cheat-sheet, common recipes, sentinel error handling, and the most common pitfalls (entity_id vs friendly name, `/v2` import path, one WS connection per process, subscription cleanup with a fresh context, sync reconnect callbacks).
+
+### Notes
+- Documentation-only release. No code, public API, or `go.mod` changes.
+
 ## [v2.2.0] - 2026-04-20
 
 ### Added

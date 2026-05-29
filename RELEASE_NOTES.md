@@ -1,5 +1,22 @@
 # Release Notes
 
+## v2.2.1
+
+Documentation-only release: adds `AGENTS.md`, an integration guide tailored for AI coding agents using `github.com/mkelcik/go-ha-client/v2`.
+
+### Highlights
+- New `AGENTS.md` with install + import path, REST vs WebSocket decision table, minimal client snippets, full API cheat-sheet (`*Client`, `*WSClient`, helpers), common recipes, sentinel error handling, and a Gotchas section covering the most frequent integration mistakes.
+- Subscription example uses `ev, ok := <-sub.Events()` and unsubscribes with a fresh context so cleanup survives loop-context cancellation.
+- Go requirement (`1.25.10+`) aligned with `README.md`, `CONTRIBUTING.md`, and `go.mod`.
+
+### Compatibility
+- Purely additive documentation change.
+- No code, no public API, no `go.mod` changes.
+- No upgrade steps required from `v2.2.0`.
+
+### Verification Summary
+- CI green on the PR introducing `AGENTS.md` (`ci`, `mod_tidy_check`, `race`, `coverage`).
+
 ## v2.2.0
 
 Parity release: the WebSocket client now exposes typed helpers for every command documented on the official [WebSocket API page](https://developers.home-assistant.io/docs/api/websocket).
