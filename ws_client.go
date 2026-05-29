@@ -541,8 +541,10 @@ func (c *WSClient) ListExposedEntities(ctx context.Context) (ExposedEntitiesResu
 }
 
 // ExposeEntity sets voice-assistant exposure for one or more entities.
-// assistants must contain at least one of "conversation", "cloud.alexa",
-// "cloud.google_assistant"; entityIDs must be non-empty.
+// Both Assistants and EntityIDs must be non-empty. Typical Assistants values
+// are "conversation", "cloud.alexa" and "cloud.google_assistant", but the
+// list is not hard-coded so third-party voice integrations are supported;
+// Home Assistant will reject unknown assistants server-side.
 func (c *WSClient) ExposeEntity(ctx context.Context, req ExposeEntityRequest) error {
 	if len(req.Assistants) == 0 {
 		return ErrEmptyAssistants
@@ -760,9 +762,15 @@ func (c *WSClient) send(ctx context.Context, req map[string]interface{}) (wsInco
 
 func (c *WSClient) readLoop(conn *websocket.Conn) {
 	for {
-		_, data, err := conn.ReadMessage()
+		msgType, data, err := conn.ReadMessage()
 		if err != nil {
 			c.tearDownReadLoop(conn, err)
+			return
+		}
+		// HA always sends text frames; anything else is a protocol violation
+		// from the server (or an intermediary) and cannot be JSON-decoded.
+		if msgType != websocket.TextMessage {
+			c.tearDownReadLoop(conn, fmt.Errorf("unexpected ws frame type %d", msgType))
 			return
 		}
 
@@ -820,8 +828,11 @@ func (c *WSClient) tearDownReadLoop(conn *websocket.Conn, err error) {
 	c.failAll(err)
 }
 
-// decodeIncomingFrame decodes a single WebSocket text frame, which is either a
-// single JSON object or a JSON array of objects (when coalesce_messages is on).
+// decodeIncomingFrame decodes a single WebSocket text frame, which must be
+// either a JSON object or a JSON array of objects (the latter when
+// coalesce_messages is on). Any other JSON value (null, number, string,
+// bool) or an empty/whitespace-only frame is treated as a protocol error
+// so callers cannot be silently stranded on a zero-value message.
 func decodeIncomingFrame(data []byte) ([]wsIncomingMessage, error) {
 	for _, b := range data {
 		switch b {
@@ -833,15 +844,17 @@ func decodeIncomingFrame(data []byte) ([]wsIncomingMessage, error) {
 				return nil, err
 			}
 			return batch, nil
-		default:
+		case '{':
 			var msg wsIncomingMessage
 			if err := json.Unmarshal(data, &msg); err != nil {
 				return nil, err
 			}
 			return []wsIncomingMessage{msg}, nil
+		default:
+			return nil, fmt.Errorf("unexpected ws payload, want object or array, got %q", b)
 		}
 	}
-	return nil, nil
+	return nil, fmt.Errorf("empty ws frame")
 }
 
 // failPending cancels all pending requests but leaves subscriptions intact.

@@ -1876,6 +1876,85 @@ func TestWSClient_Do_StillWorks_ForNewCommands(t *testing.T) {
 	assertNoHandlerErr(t, errCh)
 }
 
+func TestDecodeIncomingFrame_Strict(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		input  string
+		count  int
+		wantOK bool
+	}{
+		{"object", `{"type":"result","id":1,"success":true}`, 1, true},
+		{"array", `[{"type":"event","id":1},{"type":"pong","id":2}]`, 2, true},
+		{"leading whitespace then object", "  \n\t{\"type\":\"pong\"}", 1, true},
+		{"null literal rejected", `null`, 0, false},
+		{"number literal rejected", `42`, 0, false},
+		{"string literal rejected", `"oops"`, 0, false},
+		{"empty frame rejected", ``, 0, false},
+		{"whitespace-only rejected", "   \n", 0, false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			msgs, err := decodeIncomingFrame([]byte(tc.input))
+			if tc.wantOK {
+				if err != nil {
+					t.Fatalf("unexpected err: %v", err)
+				}
+				if len(msgs) != tc.count {
+					t.Fatalf("count: got %d want %d", len(msgs), tc.count)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error, got msgs=%v", msgs)
+			}
+		})
+	}
+}
+
+// TestWSClient_NonTextFrame_FailsPending verifies that a binary frame is
+// treated as a protocol violation (HA only sends text frames).
+func TestWSClient_NonTextFrame_FailsPending(t *testing.T) {
+	t.Parallel()
+
+	errCh := make(chan error, 1)
+	srv := newWSTestServer(t, errCh, func(conn *websocket.Conn) {
+		defer conn.Close()
+
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_required"})
+		_ = conn.ReadJSON(&map[string]interface{}{})
+		_ = conn.WriteJSON(map[string]interface{}{"type": "auth_ok"})
+
+		req := map[string]interface{}{}
+		if err := conn.ReadJSON(&req); err != nil {
+			reportHandlerErr(errCh, err)
+			return
+		}
+		_ = conn.WriteMessage(websocket.BinaryMessage, []byte("\x00\x01\x02"))
+	})
+	defer srv.Close()
+
+	ws := newTestWSClient(t, srv.URL, "test-token")
+	if err := ws.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err := ws.Do(ctx, map[string]interface{}{"type": "get_panels"}, nil)
+	if err == nil {
+		t.Fatalf("expected error from pending Do, got nil")
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Do should not block on binary frame: %v", err)
+	}
+	assertNoHandlerErr(t, errCh)
+}
+
 // TestWSClient_MalformedFrame_FailsPending verifies that a non-JSON frame is
 // treated as a fatal protocol error: pending callers get the decode error
 // rather than blocking until their context expires.
