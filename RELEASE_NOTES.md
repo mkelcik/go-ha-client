@@ -7,7 +7,7 @@ Parity release: the WebSocket client now exposes typed helpers for every command
 ### Highlights
 - New typed methods on `WSClient`: `DeclareSupportedFeatures`, `GetPanels`, `ValidateConfig`, `ExtractFromTarget`, `GetTriggersForTarget`, `GetConditionsForTarget`, `GetServicesForTarget`, `ListEntityRegistryForDisplay`, `ListExposedEntities`, `ExposeEntity`.
 - New public types for requests and responses (see `CHANGELOG.md`).
-- New sentinel error `ErrEmptyTarget` for empty `TargetSelector` inputs.
+- New sentinel errors `ErrEmptyTarget` (empty `TargetSelector` inputs) and `ErrEmptyAssistants` (empty assistants slice in `ExposeEntity`).
 - Six new runnable examples under `examples/` covering every new method.
 - REST API coverage confirmed to be 100% against the official REST docs; no REST changes.
 

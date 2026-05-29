@@ -843,6 +843,9 @@ func decodeIncomingFrame(data []byte) ([]wsIncomingMessage, error) {
 			if err := json.Unmarshal(data, &batch); err != nil {
 				return nil, err
 			}
+			if len(batch) == 0 {
+				return nil, fmt.Errorf("empty ws batch")
+			}
 			return batch, nil
 		case '{':
 			var msg wsIncomingMessage

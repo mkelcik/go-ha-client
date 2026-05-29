@@ -4,7 +4,7 @@
 
 No migration required. `v2.2.0` is a purely additive release:
 - Adds typed WebSocket helpers for every command in the official WebSocket API docs (`GetPanels`, `ValidateConfig`, `ExtractFromTarget`, `GetTriggersForTarget`, `GetConditionsForTarget`, `GetServicesForTarget`, `ListEntityRegistryForDisplay`, `ListExposedEntities`, `ExposeEntity`, `DeclareSupportedFeatures`).
-- Adds new public types and a new sentinel error `ErrEmptyTarget`.
+- Adds new public types and new sentinel errors `ErrEmptyTarget` and `ErrEmptyAssistants`.
 - Does not change any existing method signatures, types, or the `Connect()` handshake (`supported_features` is opt-in, never sent automatically).
 
 Upgrade by bumping the dependency version and rerunning tests.

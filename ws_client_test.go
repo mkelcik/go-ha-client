@@ -1304,7 +1304,12 @@ func TestWSClient_DeclareSupportedFeatures(t *testing.T) {
 				return nil, false
 			}
 			features, ok := req["features"].(map[string]interface{})
-			if !ok || features["coalesce_messages"].(float64) != 1 {
+			if !ok {
+				reportHandlerErr(errCh, errors.New("expected features object"))
+				return nil, false
+			}
+			val, ok := features["coalesce_messages"].(float64)
+			if !ok || val != 1 {
 				reportHandlerErr(errCh, errors.New("expected coalesce_messages=1"))
 				return nil, false
 			}
@@ -1893,6 +1898,7 @@ func TestDecodeIncomingFrame_Strict(t *testing.T) {
 		{"string literal rejected", `"oops"`, 0, false},
 		{"empty frame rejected", ``, 0, false},
 		{"whitespace-only rejected", "   \n", 0, false},
+		{"empty array rejected", `[]`, 0, false},
 	}
 	for _, tc := range cases {
 		tc := tc
