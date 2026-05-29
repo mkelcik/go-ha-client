@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [v2.1.2]
+
+### Changed
+- Bump minimum Go version, toolchain, and CI from `1.25.9` to `1.25.10`.
+
+### Fixed
+- Address standard library vulnerability findings from `govulncheck` by running on Go `1.25.10` (fixes include GO-2026-4971 (`net`) and GO-2026-4918 (`net/http`)).
+
 ## [v2.1.1]
 
 ### Changed
