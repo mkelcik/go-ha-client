@@ -1,5 +1,21 @@
 # Release Notes
 
+## v2.2.3
+
+Security patch release: bumps the Go toolchain to `go1.25.12` to clear a `crypto/tls` standard-library vulnerability.
+
+### Highlights
+- Toolchain bumped `go1.25.10` → `go1.25.12` in `go.mod`. This picks up the upstream `crypto/tls` fix for [GO-2026-5856](https://pkg.go.dev/vuln/GO-2026-5856), which the nightly `govulncheck` job surfaced.
+- The vulnerability is in the Go standard library (exercised on every HTTPS/WebSocket request), **not** in this project's code or its dependencies.
+- Minimum supported Go version documented as `1.25.12+` in `README.md`, `CONTRIBUTING.md`, and `AGENTS.md`, consistent with the security-first version policy (track the oldest still-supported Go minor line at its latest security patch).
+
+### Compatibility
+- No public API changes.
+- No upgrade steps required from `v2.2.2` beyond building with Go `1.25.12+`.
+
+### Verification Summary
+- Nightly `govulncheck` clears GO-2026-5856 under the bumped toolchain.
+
 ## v2.2.2
 
 Documentation-only release: clarifies the rationale behind the minimum Go version.
