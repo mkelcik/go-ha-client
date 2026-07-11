@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [v2.2.3] - 2026-07-11
+
+### Security
+- Bump Go toolchain `go1.25.10` → `go1.25.12` to pick up the `crypto/tls` standard-library fix for [GO-2026-5856](https://pkg.go.dev/vuln/GO-2026-5856). The nightly `govulncheck` job flagged it; the vulnerability is in the Go standard library (exercised by every HTTPS/WebSocket request), not in this project's code or dependencies.
+
+### Changed
+- Minimum supported Go version documented as `1.25.12+` across `README.md`, `CONTRIBUTING.md`, and `AGENTS.md`, tracking the latest security patch of the supported Go minor line per the security-first policy.
+
+### Notes
+- No public API changes. Upgrade requires no code changes from `v2.2.2`.
+
 ## [v2.2.2] - 2026-05-29
 
 ### Changed

@@ -10,7 +10,7 @@ gotchas that bite when you generate code without reading the full README.
 - Go module: `github.com/mkelcik/go-ha-client/v2` (v2 is the stable line).
 - Two clients in one package: REST `*Client` and WebSocket `*WSClient`.
 - Import alias used throughout examples and docs: `ha`.
-- Requires Go `1.25.10+` and a Home Assistant long-lived access token.
+- Requires Go `1.25.12+` and a Home Assistant long-lived access token.
 - Never invent entity IDs — they must come from the user's HA instance
   (`Developer Tools -> States`).
 
