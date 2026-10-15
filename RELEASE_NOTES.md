@@ -1,5 +1,23 @@
 # Release Notes
 
+## v2.2.4
+
+Security patch release: requires Go `1.26.9+` to address nine vulnerabilities in the Go standard library reported by the nightly vulnerability scan.
+
+### Highlights
+- Fixes GO-2026-6617, GO-2026-6613, GO-2026-6612, GO-2026-6611, GO-2026-6610, GO-2026-6608, GO-2026-6607, GO-2026-6605, and GO-2026-6603 by requiring the patched Go standard library.
+- Go 1.25 is no longer supported upstream; Go 1.26 is now the oldest supported minor line.
+- The minimum patch version is enforced by the `go` directive for local builds and CI.
+
+### Compatibility
+- No public API changes.
+- Build applications using this version with Go `1.26.9` or newer.
+
+### Verification
+- PR #15 passed CI, module tidy, race tests, and coverage checks.
+- Local checks on Go `1.26.9` passed: race tests, vet, formatting, golangci-lint, staticcheck, and gosec.
+- Both CI-pinned `govulncheck v1.1.4` and `govulncheck v1.9.0` reported no vulnerabilities.
+
 ## v2.2.3
 
 Security patch release: bumps the Go toolchain to `go1.25.12` to clear a `crypto/tls` standard-library vulnerability.

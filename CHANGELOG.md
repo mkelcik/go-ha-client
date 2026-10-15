@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
-## [Unreleased]
+## [v2.2.4] - 2026-10-15
 
 ### Security
 - Require Go `1.26.9+` to fix the nine standard-library vulnerabilities reported by nightly `govulncheck` (GO-2026-6617, GO-2026-6613, GO-2026-6612, GO-2026-6611, GO-2026-6610, GO-2026-6608, GO-2026-6607, GO-2026-6605, GO-2026-6603). Go 1.25 is no longer supported upstream; Go 1.26 is now the oldest supported minor line.
